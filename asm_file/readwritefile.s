@@ -1,20 +1,30 @@
 .intel_syntax noprefix
 
-.extern pCreateFileA
-.extern pReadFile
-.extern pGetFileSizeEx
-.extern pCloseHandle
-.extern HeapAlloc
-.extern HeapFree
+.extern pBadaFileOpen
+.extern pBadaFileRead
+.extern pBadaFileWrite
+.extern pBadaFileSeek
+.extern pBadaFileSize
+.extern pBadaFileClose
+.extern pBadaFileDelete
+.extern bada_heap_alloc
+.extern bada_heap_free
 .extern print_cstr
 .extern print_uint
 .extern string_from_cstr
 .extern string_length
 .extern string_char_at
 
-.extern heap_handle
-
 .global file_read_all
+.global bada_file_open
+.global bada_file_close
+.global bada_file_read
+.global bada_file_write
+.global bada_file_seek
+.global bada_file_delete
+.global bada_file_size
+.global bada_mem_alloc
+.global bada_mem_free
 .global file_print_lines_count
 .global file_line_reader_open
 .global file_line_reader_open_string
@@ -25,8 +35,11 @@
 .global file_get_line_at
 
 .equ GENERIC_READ, 0x80000000
+.equ GENERIC_WRITE, 0x40000000
 .equ FILE_SHARE_READ, 1
+.equ CREATE_ALWAYS, 2
 .equ OPEN_EXISTING, 3
+.equ OPEN_ALWAYS, 4
 .equ FILE_ATTRIBUTE_NORMAL, 0x00000080
 .equ HEAP_ZERO_MEMORY, 0x00000008
 .equ INVALID_HANDLE_VALUE, -1
@@ -34,8 +47,80 @@
 .section .data
 msg_total_lines: .asciz "Total lines: "
 msg_nl:          .asciz "\n"
+mode_r:          .asciz "r"
+mode_w:          .asciz "w"
+mode_a:          .asciz "a"
 
 .section .text
+
+bada_mem_alloc:
+    # rcx=size -> rax=ptr
+    mov r8, rcx
+    xor rcx, rcx
+    mov rdx, HEAP_ZERO_MEMORY
+    sub rsp, 32
+    call bada_heap_alloc
+    add rsp, 32
+    ret
+
+bada_mem_free:
+    # rcx=ptr -> rax=status
+    mov rdx, rcx
+    xor rcx, rcx
+    xor r8, r8
+    sub rsp, 32
+    call bada_heap_free
+    add rsp, 32
+    ret
+
+bada_file_open:
+    # rcx=path_ptr, rdx=mode_ptr -> rax=handle or 0
+    sub rsp, 32
+    call qword ptr [rip + pBadaFileOpen]
+    add rsp, 32
+    ret
+
+bada_file_close:
+    # rcx=handle -> rax=status
+    sub rsp, 32
+    call qword ptr [rip + pBadaFileClose]
+    add rsp, 32
+    ret
+
+bada_file_read:
+    # rcx=handle, rdx=buffer_ptr, r8=size -> rax=bytes_read
+    sub rsp, 32
+    call qword ptr [rip + pBadaFileRead]
+    add rsp, 32
+    ret
+
+bada_file_write:
+    # rcx=handle, rdx=buffer_ptr, r8=size -> rax=bytes_written
+    sub rsp, 32
+    call qword ptr [rip + pBadaFileWrite]
+    add rsp, 32
+    ret
+
+bada_file_seek:
+    # rcx=handle, rdx=offset, r8=origin -> rax=status
+    sub rsp, 32
+    call qword ptr [rip + pBadaFileSeek]
+    add rsp, 32
+    ret
+
+bada_file_delete:
+    # rcx=path_ptr -> rax=status
+    sub rsp, 32
+    call qword ptr [rip + pBadaFileDelete]
+    add rsp, 32
+    ret
+
+bada_file_size:
+    # rcx=handle -> rax=size
+    sub rsp, 32
+    call qword ptr [rip + pBadaFileSize]
+    add rsp, 32
+    ret
 
 file_read_all:
     # rcx=path cstr, rdx=AsmString* out -> rax=1/0
@@ -50,18 +135,12 @@ file_read_all:
     mov r12, rdx
     mov r15, rcx
 
-    # CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)
     mov rcx, r15
-    mov rdx, GENERIC_READ
-    mov r8, FILE_SHARE_READ
-    xor r9, r9
-    sub rsp, 64
-    mov qword ptr [rsp + 32], OPEN_EXISTING
-    mov qword ptr [rsp + 40], FILE_ATTRIBUTE_NORMAL
-    mov qword ptr [rsp + 48], 0
-    call qword ptr [rip + pCreateFileA]
-    add rsp, 64
-    cmp rax, INVALID_HANDLE_VALUE
+    lea rdx, [rip + mode_r]
+    sub rsp, 32
+    call bada_file_open
+    add rsp, 32
+    test rax, rax
     jne .have_handle
 
     # if relative path, try "..\\" + path
@@ -88,62 +167,48 @@ file_read_all:
     jmp .copy_loop
 .copy_done:
     mov rcx, rdi
-    mov rdx, GENERIC_READ
-    mov r8, FILE_SHARE_READ
-    xor r9, r9
-    sub rsp, 64
-    mov qword ptr [rsp + 32], OPEN_EXISTING
-    mov qword ptr [rsp + 40], FILE_ATTRIBUTE_NORMAL
-    mov qword ptr [rsp + 48], 0
-    call qword ptr [rip + pCreateFileA]
-    add rsp, 64
+    lea rdx, [rip + mode_r]
+    sub rsp, 32
+    call bada_file_open
+    add rsp, 32
     add rsp, 544
-    cmp rax, INVALID_HANDLE_VALUE
-    je .fail
+    test rax, rax
+    jz .fail
 
 .have_handle:
     mov r13, rax
-    # GetFileSizeEx(handle, &size)
-    sub rsp, 32
-    lea rdx, [rsp + 16]
     mov rcx, r13
-    call qword ptr [rip + pGetFileSizeEx]
-    test eax, eax
-    jz .close_fail_size
-    mov rbx, [rsp + 16]   # file size
-    add rsp, 32
-
-    # HeapAlloc(size+1)
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, HEAP_ZERO_MEMORY
-    lea r8, [rbx + 1]
     sub rsp, 32
-    call HeapAlloc
+    call bada_file_size
+    add rsp, 32
+    test rax, rax
+    jz .close_fail
+    mov rbx, rax
+
+    lea rcx, [rbx + 1]
+    sub rsp, 32
+    call bada_mem_alloc
     add rsp, 32
     test rax, rax
     jz .close_fail
     mov r14, rax          # buffer
 
-    # ReadFile(handle, buffer, size, &bytesRead, NULL)
-    sub rsp, 48
-    lea r9, [rip + bytes_read]
     mov rcx, r13
     mov rdx, r14
-    mov r8d, ebx
-    mov qword ptr [rsp + 32], 0
-    call qword ptr [rip + pReadFile]
-    test eax, eax
-    jz .read_fail
+    mov r8, rbx
+    sub rsp, 32
+    call bada_file_read
+    add rsp, 32
+    cmp rax, rbx
+    jne .read_fail
 
     mov byte ptr [r14 + rbx], 0
     mov qword ptr [r12], r14
     mov qword ptr [r12 + 8], rbx
-    add rsp, 48
 
     mov rcx, r13
     sub rsp, 32
-    call qword ptr [rip + pCloseHandle]
+    call bada_file_close
     add rsp, 32
 
     mov rax, 1
@@ -157,22 +222,15 @@ file_read_all:
     ret
 
 .read_fail:
-    add rsp, 48
-    # free buffer
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, r14
-    xor r8, r8
+    mov rcx, r14
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
     jmp .close_fail
-.close_fail_size:
-    add rsp, 32
 .close_fail:
     mov rcx, r13
     sub rsp, 32
-    call qword ptr [rip + pCloseHandle]
+    call bada_file_close
     add rsp, 32
 .fail:
     xor rax, rax
@@ -285,13 +343,9 @@ file_print_lines_count:
     add rsp, 32
 
 .lines_done:
-    # free buffer
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, r14
-    xor r8, r8
+    mov rcx, r14
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
 
     mov rax, r13
@@ -358,12 +412,9 @@ file_count_lines:
     je .count_after2
     inc r13
 .count_after2:
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, r14
-    xor r8, r8
+    mov rcx, r14
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
 
     mov rax, r13
@@ -448,12 +499,9 @@ file_get_line_at:
     jne .alloc_line
     dec r12
 .alloc_line:
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, HEAP_ZERO_MEMORY
-    lea r8, [r12 + 1]
+    lea rcx, [r12 + 1]
     sub rsp, 32
-    call HeapAlloc
+    call bada_mem_alloc
     add rsp, 32
     test rax, rax
     jz .get_fail_free
@@ -476,12 +524,9 @@ file_get_line_at:
     mov [rbx], r8
     mov [rbx + 8], r12
 
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, r14
-    xor r8, r8
+    mov rcx, r14
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
 
     mov rax, 1
@@ -496,22 +541,16 @@ file_get_line_at:
 
 .get_no_line:
     # no such line
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, r14
-    xor r8, r8
+    mov rcx, r14
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
     jmp .get_fail
 
 .get_fail_free:
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, r14
-    xor r8, r8
+    mov rcx, r14
     sub rsp, 40
-    call HeapFree
+    call bada_mem_free
     add rsp, 40
 .get_fail_stack:
     add rsp, 48
@@ -539,11 +578,9 @@ file_line_reader_open:
     mov rdx, [rax]
     test rdx, rdx
     jz .open_read
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    xor r8, r8
+    mov rcx, rdx
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
     lea rax, [rip + line_buf_ptr]
     mov qword ptr [rax], 0
@@ -626,12 +663,9 @@ file_line_reader_open_string:
     add rsp, 32
     mov r12, rax
 
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, HEAP_ZERO_MEMORY
-    lea r8, [r12 + 1]
+    lea rcx, [r12 + 1]
     sub rsp, 32
-    call HeapAlloc
+    call bada_mem_alloc
     add rsp, 32
     test rax, rax
     jz .open_string_fail_pop
@@ -658,12 +692,9 @@ file_line_reader_open_string:
     add rsp, 32
     mov r12, rax
 
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, r13
-    xor r8, r8
+    mov rcx, r13
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
 
     mov rax, r12
@@ -738,12 +769,9 @@ file_line_reader_next:
 .maybe_empty:
     mov rsi, r9
     # allocate line (len + 1)
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, HEAP_ZERO_MEMORY
-    lea r8, [rsi + 1]
+    lea rcx, [rsi + 1]
     sub rsp, 32
-    call HeapAlloc
+    call bada_mem_alloc
     add rsp, 32
     test rax, rax
     jz .next_fail
@@ -773,12 +801,9 @@ file_line_reader_next:
     add rsp, 32
 
     # free the temporary heap buffer
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, r10
-    xor r8, r8
+    mov rcx, r10
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
 
     # advance cursor
@@ -820,12 +845,9 @@ file_line_reader_close:
     mov rbx, [rax]
     test rbx, rbx
     jz .close_done
-    lea rax, [rip + heap_handle]
-    mov rcx, [rax]
-    mov rdx, rbx
-    xor r8, r8
+    mov rcx, rbx
     sub rsp, 32
-    call HeapFree
+    call bada_mem_free
     add rsp, 32
     lea rax, [rip + line_buf_ptr]
     mov qword ptr [rax], 0

@@ -8,6 +8,13 @@
 .global pGetFileSizeEx
 .global pCloseHandle
 .global pDeleteFileA
+.global pBadaFileOpen
+.global pBadaFileRead
+.global pBadaFileWrite
+.global pBadaFileSeek
+.global pBadaFileSize
+.global pBadaFileClose
+.global pBadaFileDelete
 .global pGetStdHandle
 .global pWriteFile
 .global pCreateThread
@@ -32,6 +39,13 @@ pSetFilePointerEx: .quad my_SetFilePointerEx
 pGetFileSizeEx:    .quad my_GetFileSizeEx
 pCloseHandle:      .quad my_CloseHandle
 pDeleteFileA:      .quad my_DeleteFileA
+pBadaFileOpen:     .quad my_BadaFileOpen
+pBadaFileRead:     .quad my_BadaFileRead
+pBadaFileWrite:    .quad my_BadaFileWrite
+pBadaFileSeek:     .quad my_BadaFileSeek
+pBadaFileSize:     .quad my_BadaFileSize
+pBadaFileClose:    .quad my_BadaFileClose
+pBadaFileDelete:   .quad my_BadaFileDelete
 pGetStdHandle:     .quad my_GetStdHandle
 pWriteFile:        .quad my_WriteFile
 pCreateThread:     .quad my_CreateThread
@@ -143,6 +157,115 @@ my_CloseHandle:
 .ch_fail:
     xor eax, eax
     ret
+
+my_BadaFileOpen:
+    # rcx=path_ptr, rdx=mode_ptr -> rax=handle or 0
+    push rbx
+    push r12
+    mov rbx, rcx
+    mov r12, rdx
+    mov edx, 0x80000000
+    mov r8d, 1
+    mov r9d, 3
+    test r12, r12
+    jz .bfo_call
+    mov al, byte ptr [r12]
+    cmp al, 'w'
+    je .bfo_write
+    cmp al, 'a'
+    je .bfo_append
+    jmp .bfo_call
+.bfo_write:
+    mov edx, 0xC0000000
+    mov r9d, 2
+    jmp .bfo_call
+.bfo_append:
+    mov edx, 0xC0000000
+    mov r9d, 4
+.bfo_call:
+    mov rcx, rbx
+    sub rsp, 64
+    mov qword ptr [rsp + 32], r9
+    mov qword ptr [rsp + 40], 0x80
+    mov qword ptr [rsp + 48], 0
+    call my_CreateFileA
+    add rsp, 64
+    cmp rax, -1
+    je .bfo_fail
+    test r12, r12
+    jz .bfo_done
+    mov al, byte ptr [r12]
+    cmp al, 'a'
+    jne .bfo_done
+    mov rcx, rax
+    xor rdx, rdx
+    mov r8, 2
+    call my_BadaFileSeek
+.bfo_done:
+    pop r12
+    pop rbx
+    ret
+.bfo_fail:
+    xor eax, eax
+    pop r12
+    pop rbx
+    ret
+
+my_BadaFileClose:
+    jmp my_CloseHandle
+
+my_BadaFileRead:
+    # rcx=handle, rdx=buffer_ptr, r8=size -> rax=bytes_read
+    sub rsp, 40
+    lea r9, [rsp + 32]
+    call my_ReadFile
+    test eax, eax
+    jz .bfr_fail
+    mov eax, dword ptr [rsp + 32]
+    add rsp, 40
+    ret
+.bfr_fail:
+    add rsp, 40
+    xor eax, eax
+    ret
+
+my_BadaFileWrite:
+    # rcx=handle, rdx=buffer_ptr, r8=size -> rax=bytes_written
+    sub rsp, 40
+    lea r9, [rsp + 32]
+    call my_WriteFile
+    test eax, eax
+    jz .bfw_fail
+    mov eax, dword ptr [rsp + 32]
+    add rsp, 40
+    ret
+.bfw_fail:
+    add rsp, 40
+    xor eax, eax
+    ret
+
+my_BadaFileSeek:
+    # rcx=handle, rdx=offset, r8=origin -> rax=status
+    xor r9d, r9d
+    jmp my_SetFilePointerEx
+
+my_BadaFileSize:
+    # rcx=handle -> rax=size
+    sub rsp, 40
+    lea rdx, [rsp + 32]
+    call my_GetFileSizeEx
+    test eax, eax
+    jz .bfs_fail
+    mov rax, [rsp + 32]
+    add rsp, 40
+    ret
+.bfs_fail:
+    add rsp, 40
+    xor eax, eax
+    ret
+
+my_BadaFileDelete:
+    jmp my_DeleteFileA
 
 my_CreateFileA:
     mov r11, rsp

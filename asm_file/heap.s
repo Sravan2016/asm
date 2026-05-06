@@ -2,6 +2,8 @@
 
 .global HeapAlloc
 .global HeapFree
+.global bada_heap_alloc
+.global bada_heap_free
 .global heap_handle
 
 .equ HEAP_ZERO_MEMORY, 0x00000008
@@ -21,6 +23,7 @@ heap_free_head: .quad 0
 
 .section .text
 
+bada_heap_alloc:
 HeapAlloc:
     push rbx
     push rdi
@@ -95,6 +98,7 @@ HeapAlloc:
     pop rbx
     ret
 
+bada_heap_free:
 HeapFree:
     test rdx, rdx
     jz 1f
