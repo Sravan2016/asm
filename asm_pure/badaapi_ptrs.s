@@ -33,6 +33,7 @@
 .global last_writefile_lp_value
 .global last_lpnumber_written
 .global last_lpnumber_readback
+.global bada_file_offset
 pCreateFileA:      .quad my_CreateFileA
 pReadFile:         .quad my_ReadFile
 pSetFilePointerEx: .quad my_SetFilePointerEx
@@ -73,6 +74,8 @@ last_writefile_lp_value: .long 0
 last_lpnumber_written: .long 0
 .align 4
 last_lpnumber_readback: .long 0
+.align 8
+bada_file_offset: .quad 0
 
 .section .text
 
@@ -162,11 +165,12 @@ my_BadaFileOpen:
     # rcx=path_ptr, rdx=mode_ptr -> rax=handle or 0
     push rbx
     push r12
+    push r13
     mov rbx, rcx
     mov r12, rdx
-    mov edx, 0x80000000
+    mov r13d, 3
+    mov edx, 0xC0000000
     mov r8d, 1
-    mov r9d, 3
     test r12, r12
     jz .bfo_call
     mov al, byte ptr [r12]
@@ -177,15 +181,16 @@ my_BadaFileOpen:
     jmp .bfo_call
 .bfo_write:
     mov edx, 0xC0000000
-    mov r9d, 2
+    mov r13d, 2
     jmp .bfo_call
 .bfo_append:
     mov edx, 0xC0000000
-    mov r9d, 4
+    mov r13d, 4
 .bfo_call:
     mov rcx, rbx
+    xor r9d, r9d
     sub rsp, 64
-    mov qword ptr [rsp + 32], r9
+    mov qword ptr [rsp + 32], r13
     mov qword ptr [rsp + 40], 0x80
     mov qword ptr [rsp + 48], 0
     call my_CreateFileA
@@ -199,14 +204,20 @@ my_BadaFileOpen:
     jne .bfo_done
     mov rcx, rax
     xor rdx, rdx
-    mov r8, 2
-    call my_BadaFileSeek
+    xor r8, r8
+    mov r9d, FILE_END
+    sub rsp, 32
+    call my_SetFilePointerEx
+    add rsp, 32
 .bfo_done:
+    mov qword ptr [rip + bada_file_offset], 0
+    pop r13
     pop r12
     pop rbx
     ret
 .bfo_fail:
     xor eax, eax
+    pop r13
     pop r12
     pop rbx
     ret
@@ -216,16 +227,37 @@ my_BadaFileClose:
 
 my_BadaFileRead:
     # rcx=handle, rdx=buffer_ptr, r8=size -> rax=bytes_read
-    sub rsp, 40
-    lea r9, [rsp + 32]
-    call my_ReadFile
+    sub rsp, 136
+    mov qword ptr [rsp + 96], rcx
+    mov qword ptr [rsp + 104], rdx
+    mov qword ptr [rsp + 112], r8
+    lea rax, [rip + bada_file_offset]
+    mov rax, [rax]
+    mov qword ptr [rsp + 120], rax
+    lea rax, [rsp + 72]
+    mov qword ptr [rsp + 32], rax
+    mov rax, qword ptr [rsp + 104]
+    mov qword ptr [rsp + 40], rax
+    mov eax, dword ptr [rsp + 112]
+    mov qword ptr [rsp + 48], rax
+    lea rax, [rsp + 120]
+    mov qword ptr [rsp + 56], rax
+    mov qword ptr [rsp + 64], 0
+    mov rcx, qword ptr [rsp + 96]
+    xor edx, edx
+    xor r8d, r8d
+    xor r9d, r9d
+    call NtReadFile
     test eax, eax
-    jz .bfr_fail
-    mov eax, dword ptr [rsp + 32]
-    add rsp, 40
+    js .bfr_fail
+    mov eax, dword ptr [rsp + 80]
+    mov r10, qword ptr [rip + bada_file_offset]
+    add r10, rax
+    mov qword ptr [rip + bada_file_offset], r10
+    add rsp, 136
     ret
 .bfr_fail:
-    add rsp, 40
+    add rsp, 136
     xor eax, eax
     ret
 
@@ -246,8 +278,16 @@ my_BadaFileWrite:
 
 my_BadaFileSeek:
     # rcx=handle, rdx=offset, r8=origin -> rax=status
-    xor r9d, r9d
-    jmp my_SetFilePointerEx
+    mov r9, r8
+    xor r8, r8
+    call my_SetFilePointerEx
+    test eax, eax
+    jz .bfsk_fail
+    mov qword ptr [rip + bada_file_offset], rdx
+    ret
+.bfsk_fail:
+    xor eax, eax
+    ret
 
 my_BadaFileSize:
     # rcx=handle -> rax=size

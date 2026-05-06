@@ -85,7 +85,7 @@ ArraySample :: FileRead :: Map->
        println(" Before MapFunction ");
         mapFunctions{};
         println(" After MapFunction and before readFile ");
-        readFile{"./project/com/base/ArraySample.bada"};
+        readFile{"./project/com/base/Map.bada"};
         println("After readFile");
     []<--
 <-

@@ -10,8 +10,12 @@
 .extern bada_heap_alloc
 .extern bada_heap_free
 .extern print_cstr
+.extern print_string
 .extern print_uint
+.extern filestring_open
+.extern filestring_close
 .extern string_from_cstr
+.extern string_free
 .extern string_length
 .extern string_char_at
 
@@ -26,6 +30,7 @@
 .global bada_mem_alloc
 .global bada_mem_free
 .global file_print_lines_count
+.global file_print_lines_string
 .global file_line_reader_open
 .global file_line_reader_open_string
 .global file_line_reader_next
@@ -43,7 +48,6 @@
 .equ FILE_ATTRIBUTE_NORMAL, 0x00000080
 .equ HEAP_ZERO_MEMORY, 0x00000008
 .equ INVALID_HANDLE_VALUE, -1
-
 .section .data
 msg_total_lines: .asciz "Total lines: "
 msg_nl:          .asciz "\n"
@@ -135,10 +139,40 @@ file_read_all:
     mov r12, rdx
     mov r15, rcx
 
-    mov rcx, r15
-    lea rdx, [rip + mode_r]
+    sub rsp, 544
+    lea rdi, [rsp + 32]
+    mov rsi, r15
+    mov al, byte ptr [rsi]
+    cmp al, '.'
+    jne .normalize_copy
+    mov al, byte ptr [rsi + 1]
+    cmp al, '\\'
+    je .normalize_skip_dot
+    cmp al, '/'
+    je .normalize_skip_dot
+    jmp .normalize_copy
+.normalize_skip_dot:
+    add rsi, 2
+.normalize_copy:
+    mov al, byte ptr [rsi]
+    test al, al
+    jz .normalize_done
+    cmp al, '/'
+    jne .normalize_store
+    mov al, '\\'
+.normalize_store:
+    mov byte ptr [rdi], al
+    inc rdi
+    inc rsi
+    jmp .normalize_copy
+.normalize_done:
+    mov byte ptr [rdi], 0
+
+    mov r13, rsp
+    lea rcx, [r13]
+    lea rdx, [r13 + 32]
     sub rsp, 32
-    call bada_file_open
+    call filestring_open
     add rsp, 32
     test rax, rax
     jne .have_handle
@@ -150,12 +184,11 @@ file_read_all:
     mov al, byte ptr [r15 + 1]
     cmp al, ':'
     je .fail
-    sub rsp, 544
-    lea rdi, [rsp + 32]
+    lea rdi, [rsp + 288]
     mov byte ptr [rdi], '.'
     mov byte ptr [rdi + 1], '.'
     mov byte ptr [rdi + 2], '\\'
-    lea rsi, [r15]
+    lea rsi, [rsp + 32]
     lea rbx, [rdi + 3]
 .copy_loop:
     mov al, byte ptr [rsi]
@@ -166,23 +199,19 @@ file_read_all:
     inc rbx
     jmp .copy_loop
 .copy_done:
-    mov rcx, rdi
-    lea rdx, [rip + mode_r]
+    lea rcx, [r13]
+    mov rdx, rdi
     sub rsp, 32
-    call bada_file_open
+    call filestring_open
     add rsp, 32
-    add rsp, 544
     test rax, rax
     jz .fail
 
 .have_handle:
-    mov r13, rax
-    mov rcx, r13
+    lea rcx, [r13]
     sub rsp, 32
-    call bada_file_size
+    call string_length
     add rsp, 32
-    test rax, rax
-    jz .close_fail
     mov rbx, rax
 
     lea rcx, [rbx + 1]
@@ -192,26 +221,30 @@ file_read_all:
     test rax, rax
     jz .close_fail
     mov r14, rax          # buffer
-
-    mov rcx, r13
-    mov rdx, r14
-    mov r8, rbx
+    xor r15, r15
+.read_loop:
+    cmp r15, rbx
+    jae .read_done
     sub rsp, 32
-    call bada_file_read
+    lea rcx, [r13]
+    mov rdx, r15
+    call string_char_at
     add rsp, 32
-    cmp rax, rbx
-    jne .read_fail
-
+    mov byte ptr [r14 + r15], al
+    inc r15
+    jmp .read_loop
+.read_done:
     mov byte ptr [r14 + rbx], 0
     mov qword ptr [r12], r14
     mov qword ptr [r12 + 8], rbx
 
-    mov rcx, r13
+    lea rcx, [r13]
     sub rsp, 32
-    call bada_file_close
+    call filestring_close
     add rsp, 32
 
     mov rax, 1
+    add rsp, 544
     pop rsi
     pop rdi
     pop r15
@@ -221,18 +254,13 @@ file_read_all:
     pop rbx
     ret
 
-.read_fail:
-    mov rcx, r14
-    sub rsp, 32
-    call bada_mem_free
-    add rsp, 32
-    jmp .close_fail
 .close_fail:
-    mov rcx, r13
     sub rsp, 32
-    call bada_file_close
+    lea rcx, [r13]
+    call filestring_close
     add rsp, 32
 .fail:
+    add rsp, 544
     xor rax, rax
     pop rsi
     pop rdi
@@ -361,6 +389,102 @@ file_print_lines_count:
 
 .fail_lines:
     add rsp, 48
+    xor rax, rax
+    pop rsi
+    pop rdi
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+file_print_lines_string:
+    # rcx=AsmString* path -> rax=1/0
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    push rdi
+    push rsi
+    test rcx, rcx
+    jz .fpls_fail
+    mov rbx, rcx
+
+    sub rsp, 32
+    mov rcx, rbx
+    call string_length
+    add rsp, 32
+    mov r12, rax
+
+    lea rcx, [r12 + 1]
+    sub rsp, 32
+    call bada_mem_alloc
+    add rsp, 32
+    test rax, rax
+    jz .fpls_fail
+    mov r13, rax
+
+    xor r14, r14
+.fpls_copy_loop:
+    cmp r14, r12
+    jae .fpls_copy_done
+    sub rsp, 32
+    mov rcx, rbx
+    mov rdx, r14
+    call string_char_at
+    add rsp, 32
+    mov byte ptr [r13 + r14], al
+    inc r14
+    jmp .fpls_copy_loop
+.fpls_copy_done:
+    mov byte ptr [r13 + r12], 0
+
+    sub rsp, 48
+    mov rcx, r13
+    call file_line_reader_open
+    test rax, rax
+    jz .fpls_cleanup_stack
+.fpls_loop:
+    lea rcx, [rsp + 32]
+    call file_line_reader_next
+    test rax, rax
+    jz .fpls_close
+    sub rsp, 32
+    lea rcx, [rsp + 64]
+    call print_string
+    lea rcx, [rip + msg_nl]
+    call print_cstr
+    lea rcx, [rsp + 64]
+    call string_free
+    add rsp, 32
+    jmp .fpls_loop
+.fpls_close:
+    sub rsp, 32
+    call file_line_reader_close
+    add rsp, 32
+    add rsp, 48
+    mov rcx, r13
+    sub rsp, 32
+    call bada_mem_free
+    add rsp, 32
+    mov rax, 1
+    pop rsi
+    pop rdi
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+.fpls_cleanup_stack:
+    add rsp, 48
+    mov rcx, r13
+    sub rsp, 32
+    call bada_mem_free
+    add rsp, 32
+.fpls_fail:
     xor rax, rax
     pop rsi
     pop rdi

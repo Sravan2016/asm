@@ -1115,10 +1115,39 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
         std::string owner_class =
             resolve_method_owner(class_parent_map_, class_method_map_,
                                  analyser_->classes(), current_class_name_, current_parents_, func_name);
+        std::vector<SemanticType> parameter_types;
+        const std::string& lookup_class = owner_class.empty() ? current_class_name_ : owner_class;
+        auto class_it = analyser_->classes().find(lookup_class);
+        if (class_it != analyser_->classes().end()) {
+            auto method_it = class_it->second.methods.find(func_name);
+            if (method_it != class_it->second.methods.end()) {
+                parameter_types = method_it->second.parameter_types;
+            }
+        }
         if (!owner_class.empty()) {
             args.push_back(load_symbol_value("this", IRType::makePointer()));
         }
-        for (const auto& arg : expr.arguments) {
+        for (std::size_t i = 0; i < expr.arguments.size(); ++i) {
+            const auto& arg = expr.arguments[i];
+            if (i < parameter_types.size() &&
+                is_string_semantic_type(parameter_types[i])) {
+                if (const auto* literal = dynamic_cast<const LiteralExpr*>(arg.get());
+                    literal && literal->kind == ExprKind::StringLiteral) {
+                    const std::string data_ptr =
+                        emit_string_constant(decode_string_literal_value(literal->value), true);
+                    const std::string temp_string = new_temporary();
+                    emit(IRInstruction::make_alloca(temp_string, IRType::makeString()));
+                    module_.add_external_symbol("string_from_cstr");
+                    IRInstruction call;
+                    call.opcode = IROpcode::CallRuntime;
+                    call.type = IRType::makeVoid();
+                    call.operands = {"string_from_cstr", "&" + temp_string, data_ptr};
+                    emit(call);
+                    register_owned_value(temp_string, "string_free", CleanupOperandKind::PassAddress);
+                    args.push_back("&" + temp_string);
+                    continue;
+                }
+            }
             args.push_back(visitExpression(*arg));
         }
 
