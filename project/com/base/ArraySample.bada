@@ -18,7 +18,7 @@ ArraySample :: FileRead :: Map->
             return b;
         });
        String s = arrS.join(",");
-       println(s);
+       println(" String "+ s);
        String[] sortS = arrS.sort((a,b)=>{
             Boolean b = a>b;
             return b;
@@ -35,7 +35,7 @@ ArraySample :: FileRead :: Map->
             return b;
         } );
        String s = arr.join(",");
-       println(s);
+       println(" Integer "+ s);
        Integer[] sortI = arr.sort((a,b)=>{
             Boolean b = a>b;
             return b;
@@ -52,7 +52,7 @@ ArraySample :: FileRead :: Map->
             return b;
         } );
        String s = arrL.join(",");
-       println(s);
+       println(" Long "+ s);
        Long[] sortL = arrL.sort((a,b)=>{
             Boolean b = a>b;
             return b;
@@ -69,7 +69,7 @@ ArraySample :: FileRead :: Map->
             return b;
         } );
        String s = arrD.join(",");
-       println(s);
+       println(" Double "+ s);
        Double[] sortD = arrD.sort((a,b)=>{
             Boolean b = a>b;
             return b;

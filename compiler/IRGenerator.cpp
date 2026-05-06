@@ -1519,16 +1519,17 @@ std::string IRGenerator::visitGrouping(const GroupingExpr& expr) {
 std::string IRGenerator::visitArrayLiteral(const ArrayLiteralExpr& expr) {
     std::string dest = new_temporary();
     std::size_t count = expr.elements.size();
+    std::size_t initial_capacity = count == 0 ? 4 : count + 4;
 
-    // Create array
-    std::string count_val = new_temporary();
-    emit(IRInstruction::make_const_int(count_val, static_cast<int64_t>(count)));
+    // Create array with spare capacity so later add(...) calls can append.
+    std::string capacity_val = new_temporary();
+    emit(IRInstruction::make_const_int(capacity_val, static_cast<int64_t>(initial_capacity)));
 
     IRInstruction arr_new;
     arr_new.opcode = IROpcode::ArrayNew;
     arr_new.type = IRType::makeArray(IRType::makePointer());
     arr_new.result = dest;
-    arr_new.operands = {count_val};
+    arr_new.operands = {capacity_val};
     emit(arr_new);
 
     module_.add_external_symbol("array_create");

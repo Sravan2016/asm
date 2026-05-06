@@ -179,10 +179,10 @@ void CodeGenerator::emit_instruction(const IRInstruction& inst) {
             uint64_t bits = 0;
             static_assert(sizeof(bits) == sizeof(inst.double_value), "double size mismatch");
             std::memcpy(&bits, &inst.double_value, sizeof(bits));
-            output_ << "    mov " << reg << ", " << bits << std::endl;
+            output_ << "    mov rax, " << bits << std::endl;
             var_locations_[inst.result] = std::to_string(local_var_offset_);
             var_types_[inst.result] = IRType::makeDouble();
-            output_ << "    mov [rbp-" << var_locations_[inst.result] << "], " << reg << std::endl;
+            output_ << "    mov [rbp-" << var_locations_[inst.result] << "], rax" << std::endl;
             local_var_offset_ += 8;
             break;
         }

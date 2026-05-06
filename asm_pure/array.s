@@ -455,7 +455,17 @@ array_add:
     mov r12, rdx
     mov r13, [rbx + 8]
     cmp r13, [rbx + 16]
-    jae .add_fail
+    jb .add_have_capacity
+    mov rax, [rbx + 16]
+    test rax, rax
+    jnz .add_grow
+    mov rax, 1
+    jmp .add_set_capacity
+.add_grow:
+    add rax, rax
+.add_set_capacity:
+    mov [rbx + 16], rax
+.add_have_capacity:
     mov rax, r13
     imul rax, [rbx + 24]
     mov rcx, [rbx]
