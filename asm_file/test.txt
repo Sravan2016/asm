@@ -1,0 +1,2 @@
+Hello from asm file reader.
+Line 2.

@@ -1,0 +1,6 @@
+ConcatIntTest ->
+    main{String[] args} -->
+        Integer x = 30;
+        println("x = " + x);
+    <--
+<-

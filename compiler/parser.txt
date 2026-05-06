@@ -1,0 +1,84 @@
+Parsing
+1. Purpose
+Parsing is the compiler phase that takes the token stream produced by the lexer and turns it into a structured representation of the program, usually an abstract syntax tree, or AST. The parser checks whether the token order matches the language grammar and groups tokens into meaningful language constructs such as expressions, statements, declarations, blocks, and functions.
+The parser does not usually decide whether a program is semantically valid. It decides whether the program is structurally valid according to the syntax rules.
+2. Why Parsing Exists
+Lexical analysis groups characters into tokens, but tokens alone do not tell the compiler how language constructs are nested. For example, the token sequence for x + y * z does not itself say which operation binds first. The parser applies grammar rules and precedence rules so that the compiler knows the structure is x + (y * z), not (x + y) * z.
+Without parsing, later stages would be forced to infer program structure from raw token lists, which is fragile and difficult to maintain.
+3. Parser Input and Output
+The parser input is a stream of tokens. Each token typically includes a kind, lexeme, and source location. The output is an AST or a closely related syntax tree. The AST should preserve the language meaning while omitting punctuation that is only needed to recognize structure.
+For example, the expression 10 + 20 becomes a binary expression node with the operator plus and two integer literal child nodes.
+4. Grammar
+A parser needs a grammar. The grammar defines which token sequences are valid and how they are grouped. Grammars are often written in BNF or EBNF style. Even for a small custom language, writing the grammar down is critical because it forces the syntax rules to become explicit.
+An example expression grammar is: Expr -> Term ((+ | -) Term)*, Term -> Factor ((* | /) Factor)*, Factor -> Number | Identifier | ( Expr ). This is enough to encode precedence between addition and multiplication.
+5. AST Structure
+The AST represents the syntactic structure of the program. Common node types include Program, ClassDecl, MethodDecl, VariableDecl, BlockStmt, IfStmt, WhileStmt, ForStmt, ReturnStmt, PrintStmt, BinaryExpr, UnaryExpr, LiteralExpr, IdentifierExpr, CallExpr, and AssignmentExpr.
+The AST should store enough information for later stages such as semantic analysis and code generation, including token locations for diagnostics.
+6. Main Responsibilities
+A parser usually has four direct responsibilities: consume tokens in a valid order, build AST nodes, detect syntax errors, and recover from syntax errors where practical so that later errors can still be reported.
+It should not usually perform type checking, variable binding, or code generation. Those belong to later phases.
+7. Parsing Strategies
+Common parsing strategies include recursive descent, Pratt parsing, LL parser generators, and LR or LALR parser generators. For a first compiler, recursive descent is usually the best default because it is readable, easy to debug, and fits hand-written parsers well.
+Pratt parsing is especially useful for expression parsing because it handles precedence and associativity compactly.
+8. Recursive Descent Parsing
+Recursive descent means each major grammar rule is implemented as a function. For example, parseExpression parses expressions, parseStatement parses statements, parseBlock parses blocks, and parseMethod parses method declarations. Each function looks at the current token, decides which grammar rule applies, consumes the necessary tokens, and returns an AST node.
+This approach maps naturally to language syntax and makes control flow inside the parser easy to follow.
+9. Parser State
+A typical parser stores the token list and a current index. Core helper operations are peek, previous, advance, match, check, and consume. Peek looks at the current token without consuming it. Advance moves forward. Match checks whether the current token is one of several expected kinds and consumes it if so. Consume enforces that a specific token kind must appear and produces a syntax error if it does not.
+This minimal state is enough for most hand-written parsers.
+10. Program-Level Parsing
+Most parsers start at the program level and repeatedly parse top-level declarations until EOF. Depending on the language, top-level constructs may be classes, imports, free functions, global variables, or statements. The program node then owns a list of these declarations.
+For a class-oriented language, parseProgram often loops over parseClassDecl until the token stream ends.
+11. Statement Parsing
+Statement parsing usually dispatches based on the current token. If the current token is while, the parser calls parseWhileStmt. If it is for, it calls parseForStmt. If it is print or println, it parses a print statement. If it sees an identifier followed by assign, it may parse an assignment. If it sees a left brace, it parses a block.
+This top-level dispatch is one of the simplest and most stable parts of a recursive descent parser.
+12. Expression Parsing
+Expressions are where parsers most often become subtle. Operators have precedence and associativity. Addition and subtraction usually bind less tightly than multiplication and division. Comparisons often bind less tightly than arithmetic. Assignment is often right-associative. Parentheses override precedence.
+A common recursive descent shape is parseAssignment, parseLogicalOr, parseLogicalAnd, parseEquality, parseComparison, parseTerm, parseFactor, parseUnary, and parsePrimary. Each function handles one precedence layer and delegates tighter-binding operators to the next lower function.
+13. Precedence and Associativity
+Precedence decides which operator groups first. Associativity decides how repeated operators of the same precedence group. For example, a - b - c is usually parsed as (a - b) - c because subtraction is left-associative. Assignment such as a = b = c is usually parsed as a = (b = c) because assignment is right-associative.
+These rules must be encoded directly in the parser structure, otherwise the AST will be wrong even if every token is valid.
+14. Primary Expressions
+Primary expressions are the smallest parseable expression units. Typical examples are identifiers, integer literals, string literals, booleans, parenthesized expressions, and function or method calls. A parser often starts primary expression parsing by checking the current token kind and returning the corresponding AST node.
+Calls and member access often extend primary expressions. For example, after parsing an identifier, the parser may loop while it sees a left parenthesis or a dot and keep growing the expression tree.
+15. Parsing Declarations
+Declarations usually begin with a clear keyword or type token. A variable declaration parser often expects a type token, then an identifier, then an optional initializer, and finally a semicolon. A method declaration parser typically expects a method marker, a name, a parameter list, and a body or terminator. A class parser expects a class keyword or class-form marker followed by the class name and body.
+It is worth keeping declaration parsing separate from statement parsing because declarations usually have stricter structure and better error recovery points.
+16. Parsing Blocks
+A block groups a sequence of declarations or statements between delimiters such as braces. The parser consumes the opening delimiter, repeatedly parses inner items until the closing delimiter is reached, then consumes the closing delimiter and returns a block AST node.
+Blocks are the main unit of nesting, so keeping their parsing logic simple is important.
+17. Parsing Control Flow
+Control-flow statements such as if, while, for, and switch usually have very regular syntax. The parser checks the keyword, consumes the condition or header syntax, and then parses the body statement or block. For switch or case-style syntax, the parser often loops over labeled sections and attaches each section to the switch node.
+Control flow becomes easier to implement once expression parsing and block parsing are already stable.
+18. Error Reporting
+Syntax errors should point to the token that caused the failure and explain what the parser expected. Good messages look like: expected ')' after expression, expected identifier after type name, or expected ';' after statement. The parser should carry source locations from tokens into diagnostics.
+Vague messages such as syntax error are not enough for practical compiler work.
+19. Error Recovery
+Stopping at the first syntax error is acceptable for a prototype, but practical parsers usually recover so they can report more than one error. A common strategy is synchronization: after an error, skip tokens until a likely statement or declaration boundary is found, such as a semicolon, closing brace, or declaration keyword.
+Recovery logic should be conservative. Over-aggressive recovery often creates misleading follow-up errors.
+20. Ambiguity
+A grammar is ambiguous when more than one parse tree is possible for the same token sequence. Expression grammars without precedence are a common source of ambiguity. The usual fix is to structure the grammar by precedence levels or to use a Pratt parser for expressions.
+Ambiguity is not just a formal concern. It directly produces unstable ASTs and inconsistent behavior.
+21. Left Recursion and Parser Shape
+Hand-written recursive descent parsers cannot directly handle left-recursive rules such as Expr -> Expr + Term. Those rules must be rewritten into iterative or right-recursive form. That is why recursive descent expression parsers often use loops for repeated operators instead of direct self-calls at the same precedence level.
+This is a structural requirement, not a style preference.
+22. Pratt Parsing
+Pratt parsing is an alternative expression parsing strategy based on binding powers. Each token knows how it behaves in prefix and infix positions. This makes it compact and flexible for operator-heavy languages. If the language has many operators or custom precedence levels, Pratt parsing can be cleaner than a long recursive descent precedence ladder.
+For statements and declarations, recursive descent still usually remains the surrounding structure.
+23. Example Parser Flow
+A simple parser flow is: tokenize the source, create a Parser object with the token vector, call parseProgram, and then recursively parse declarations, statements, and expressions as needed. If parsing succeeds, the result is a complete AST. If syntax errors occur, the parser records them and either stops or recovers depending on design.
+This separation between tokenization and parsing makes debugging easier because token bugs and parser bugs can be isolated.
+24. Testing Strategy
+Parser tests should be separated from lexer tests. Good parser tests cover precedence, grouping, nested blocks, function declarations, class structures, print statements, malformed syntax, missing delimiters, and recovery cases. For many grammars, AST shape tests are more useful than only checking whether parsing succeeds.
+Tests should include both valid and invalid inputs.
+25. Common Parser Bugs
+Frequent parser bugs include wrong operator precedence, wrong associativity, forgetting to consume a delimiter, consuming one token too many, poor synchronization after errors, treating declarations as statements or vice versa, and building AST nodes with missing source spans.
+These issues are usually found quickly if the parser is tested with small focused inputs.
+26. Minimal Development Plan
+A practical parser build order is: define the token stream API, define AST node types, implement parser helpers such as peek and consume, implement primary expressions, implement the expression precedence ladder, implement statement parsing, implement block parsing, implement declarations, add syntax diagnostics, add recovery, and then add tests for both valid and invalid programs.
+This order keeps complexity under control because expressions are needed almost everywhere else.
+27. C++ Parser Structure
+In C++, a practical parser is usually a class holding a const reference to the token vector and an index. AST nodes can be represented with structs and std::unique_ptr for ownership, or with tagged unions such as std::variant for smaller projects. The parser interface often starts with parseProgram and private helpers for each grammar rule.
+Keeping AST construction and token consumption local to each parse function makes the implementation easier to reason about and change.
+28. Conclusion
+Parsing is the stage that turns a flat token stream into structured program syntax. A good parser is precise about grammar, explicit about precedence, disciplined about token consumption, and useful in its diagnostics. For a first compiler, a hand-written recursive descent parser with a clear AST and focused error recovery is the most practical approach.

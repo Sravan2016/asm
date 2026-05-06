@@ -1,0 +1,10 @@
+MathTest2 ->
+    main{String[] args} -->
+        Integer a = 10;
+        Integer b = 20;
+        Integer c = a + b;
+        print("a + b = ");
+        print(c);
+        println("");
+    <--
+<-

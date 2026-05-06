@@ -1,0 +1,8 @@
+DebugTest ->
+    main{String[] args} -->
+        Integer x = 42;
+        String s = "val: ";
+        String result = s + x;
+        println(result);
+    <--
+<-

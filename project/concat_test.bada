@@ -1,0 +1,5 @@
+ConcatTest ->
+    main{String[] args} -->
+        println("hello " + "world");
+    <--
+<-

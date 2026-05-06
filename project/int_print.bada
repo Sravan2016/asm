@@ -1,0 +1,6 @@
+IntTest ->
+    main{String[] args} -->
+        Integer x = 42;
+        println(x);
+    <--
+<-

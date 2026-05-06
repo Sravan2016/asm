@@ -1,0 +1,81 @@
+ArraySample :: FileRead :: Map->
+    createArray{} -->
+        Integer[] arr = {10, 20, 30, 40};
+        String[] arrS = {"Hi", "Bye", "Hey", "Sad"};
+        Long[] arrL = {0l, 1l,2l,3l,4l};
+        Double[] arrD = {0d,1d,2d,3d,4d};
+
+
+
+        arrS.contains("Hi");
+        arrS.add("nj");
+        Integer s = arrS.find("Hi");
+        Integer s = arrS.size();
+        String getS = arrS.get(1);
+        arrS.remove(1);
+        String[] filterS = arrS.filter((value)=>{
+            Boolean b = value.equals("Hi");
+            return b;
+        });
+       String s = arrS.join(",");
+       println(s);
+       String[] sortS = arrS.sort((a,b)=>{
+            Boolean b = a>b;
+            return b;
+       });
+
+        arr.contains(10);
+        arr.add(2);
+        Integer s = arr.find(2);
+        Integer s = arr.size();
+        Integer getI = arr.get(1);
+        arr.remove(1);
+        Integer[] filterI = arr.filter((value)=>{
+            Boolean b = value.equals(2);
+            return b;
+        } );
+       String s = arr.join(",");
+       println(s);
+       Integer[] sortI = arr.sort((a,b)=>{
+            Boolean b = a>b;
+            return b;
+       });
+
+        arrL.contains(1l);
+        arrL.add(2l);
+        Integer s = arrL.find(2l);
+        Integer s = arrL.size();
+        Long getS = arrL.get(1);
+        arrL.remove(1);
+        Long[] filterL = arrL.filter((value)=>{
+            Boolean b = value.equals(2l);
+            return b;
+        } );
+       String s = arrL.join(",");
+       println(s);
+       Long[] sortL = arrL.sort((a,b)=>{
+            Boolean b = a>b;
+            return b;
+       });
+
+        arrD.contains(1d);
+        arrD.add(2d);
+        Integer s = arrD.find(2d);
+        Integer s = arrD.size();
+        Double getD = arrD.get(1);
+        arrD.remove(1);
+        Double[] filterD = arrD.filter((value)=>{
+            Boolean b = value.equals(2d);
+            return b;
+        } );
+       String s = arrD.join(",");
+       println(s);
+       Double[] sortD = arrD.sort((a,b)=>{
+            Boolean b = a>b;
+            return b;
+       });
+       print("hi");
+        mapFunctions{};
+        readFile{"./ArraySample.bada"}
+    []<--
+<-

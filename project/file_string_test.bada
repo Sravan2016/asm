@@ -1,0 +1,8 @@
+FileStringTest ->
+    main{String[] args} -->
+        FileString s = "Hello";
+        FileInteger n = 10;
+        Integer len = s.length;
+        n++;
+    <--
+<-

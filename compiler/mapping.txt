@@ -1,0 +1,149 @@
+class: class : Test ->
+class: inheritence Test : Test1
+method: methodcall : loopFunctions{0, a};
+method: method declaration: loopFunctions{}
+method: method passing params: loopFunctions{Integer i, Integer a}
+while: while loop: (a > i)<>
+switch: which case: (i)< i=1:[println]>
+for: for loop:  (Integer i, int index: arr){}
+println: print in new line: println("b / a = " + (b / a));
+print: print in existing line: print("b / a = " + (b / a));
+
+Integer: declaration : [Integer dst = value]: long long fileint_create_auto(FileInt* dst, int value);
+Integer: addition: [c=a.add(b), c= a+b]: int int_add(int a, int b)
+Integer: substraction: [a.sub(b),(a-b)]: int int_sub(int a, int b);
+Integer: multiplication: [a.mul(b), (a*b)]: int int_mul(int a, int b);
+Integer: divition: [a.div(b), (a/b)]; int int_div(int a, int b);
+Integer: mod: [a.mod(b), (a%b)]: int int_mod(int a, int b);
+Integer: equals: [a=b]: int int_eq(int a, int b);
+Integer: lessthan: [a<b]: int int_lt(int a, int b);
+Integer: greaterthan: [a>b]: int int_gt(int a, int b);
+Integer: fromString: [fromString("0"), fromString(s)]: int fromString(const char* s);
+Integer: fromLong: [fromLong(0l), fromLong(v)]: int fromLong(long long v);
+Integer: fromDouble: [fromDouble(0d), fromDouble(v)], int fromDouble(double v);
+Integer: assign integer:[]: long long fileint_create_auto(FileInt* dst, int value);
+Integer: get ingeger: []: int fileint_get(FileInt* dst);
+Integer: set ingeger: []: long long fileint_set(FileInt* dst, int value);
+Integer: method ends: [<=, []<=]:void fileint_free(FileInt* dst);
+
+
+
+String: assign: [String s;]: void runtime_init();
+String: Sting: [String dst = src//"" is src//]: void string_from_cstr(AsmString* dst, const char* src);
+String: String copy: [String dst = src;]: void string_copy(AsmString* dst, const AsmString* src);
+String: method ends: [<=, []<=]: void string_free(AsmString* s);
+String: string.obj: [s.length]: long long string_length(const AsmString* s);
+String: string.obj: [s.atIndex(idx)]: unsigned char string_char_at(const AsmString* s, unsigned long long idx);
+String: string.obj: [dst=a.concat(b)]: void string_concat(AsmString* dst, const AsmString* a, const AsmString* b);
+String: string.obj: [a.equals(b)]: long long string_equals(const AsmString* a, const AsmString* b);
+String: string.obj: [a.equalsIcase(b)]: long long string_equals_icase(const AsmString* a, const AsmString* b);
+String: string.obj: [s.atChar(c)]: long long string_contains_char(const AsmString* s, unsigned char c);
+String: string.obj: [hay.containString(needle)]: long long string_contains_sub(const AsmString* hay, const AsmString* needle);
+String: string.obj: []: void print_cstr(const char* s);
+String: string.obj: []: void print_string(const AsmString* s);
+String: string.obj: []: void print_uint(unsigned long long v);
+String: string.obj: [String dst = fromInteger(v)]: void fromInteger(AsmString* dst, int v);
+String: string.obj: [String dst = fromLong(v)]: void fromLong(AsmString* dst, long long v);
+String: string.obj: [String dst = fromDouble(v)]: void fromDouble(AsmString* dst, double v);
+String: string.obj: [[String dst = src //"" is src//]]: long long filestring_create_auto_from_cstr(FileString* dst, const char* src);
+String: string.obj: []: long long filestring_create_from_cstr(FileString* dst, const char* path, const char* src);
+String: string.obj: []: long long filestring_open(FileString* dst, const char* path);
+String: string.obj: []: unsigned long long filestring_length(const FileString* s);
+String: string.obj: []: unsigned char filestring_char_at(FileString* s, unsigned long long idx);
+String: string.obj: []: long long filestring_write_at(FileString* s, unsigned long long idx, const char* src, unsigned long long len);
+String: string.obj: [s.replaceAt(idx, c)]: long long filestring_replace_char_at(FileString* s, unsigned long long idx, unsigned char c);
+String: string.obj: []: void filestring_close(FileString* s);
+String: string.obj: []: void filestring_free(FileString* s);
+
+Long: long.obj: [a+b]: long long long_add(long long a, long long b);
+Long: long.obj: [a-b]: long long long_sub(long long a, long long b);
+Long: long.obj: [a*b]: long long long_mul(long long a, long long b);
+Long: long.obj: [a/b]: long long long_div(long long a, long long b);
+Long: long.obj: [a%b]: long long long_mod(long long a, long long b);
+Long: long.obj: [a=b]: int long_eq(long long a, long long b);
+Long: long.obj: [a < b]: int long_lt(long long a, long long b);
+Long: long.obj: [a > b]: int long_gt(long long a, long long b);
+Long: long.obj: [fromString(s)]: long long fromString(const char* s);
+Long: long.obj: [fromInteger(v)]: long long fromInteger(int v);
+Long: long.obj: [fromDouble(v)]: long long fromDouble(double v);
+Long: long.obj: [Long dst = value //"" is value//]: long long filelong_create_auto(FileLong* dst, long long value);
+Long: long.obj: []: long long filelong_get(FileLong* dst);
+Long: long.obj: []: long long filelong_set(FileLong* dst, long long value);
+Long: long.obj: []: void filelong_free(FileLong* dst);
+
+Double: dowble.obj: [a+b]: double double_add(double a, double b);
+Double: dowble.obj: [a-b]: double double_sub(double a, double b);
+Double: dowble.obj: [a*b]: double double_mul(double a, double b);
+Double: dowble.obj: [a/b]: double double_div(double a, double b);
+Double: dowble.obj: [a=b]: int double_eq(double a, double b);
+Double: dowble.obj: [a < b]: int double_lt(double a, double b);
+Double: dowble.obj: [a > b]: int double_gt(double a, double b);
+Double: dowble.obj: [fromString(s)]: double fromString(const char* s);
+Double: dowble.obj: [fromInteger(v)]: double fromInteger(int v);
+Double: dowble.obj: [fromLong(v)]: double fromLong(long long v);
+Double: dowble.obj: [Double dst = value //"" is value//]: long long filedouble_create_auto(FileDouble* dst, double value);
+Double: dowble.obj: []: double filedouble_get(FileDouble* dst);
+Double: dowble.obj: []: long long filedouble_set(FileDouble* dst, double value);
+Double: dowble.obj: []: void filedouble_free(FileDouble* dst);
+
+
+Array: array.obj: void array_init(AsmArray* arr, unsigned long long cap, unsigned long long elem_size);
+Array: array.obj: AsmArray* array_create(unsigned long long cap, unsigned long long elem_size);
+Array: array.obj: long long array_add(AsmArray* arr, const void* elem_ptr);
+Array: array.obj: long long array_find(AsmArray* arr, long long (*cb)(const void* elem_ptr));
+Array: array.obj: unsigned long long array_size(const AsmArray* arr);
+Array: array.obj: void* array_get(AsmArray* arr, unsigned long long idx);
+Array: array.obj: long long array_remove(AsmArray* arr, unsigned long long idx);
+Array: array.obj: AsmArray* array_filter(AsmArray* src, long long (*cb)(const void* elem_ptr));
+Array: array.obj: void array_map(AsmArray* src, AsmArray* dst, long long (*cb)(const void* elem_ptr, void* out_elem_ptr));
+Array: array.obj: void array_join(AsmArray* src, const AsmString* delim, AsmString* out);
+Array: array.obj: void array_sort(AsmArray* arr, long long (*cmp)(const void* a, const void* b));
+Array: array.obj: void array_free(AsmArray* arr);
+
+Boolean: boolean.obj: int bool_not(int a);
+Boolean: boolean.obj: int bool_and(int a, int b);
+Boolean: boolean.obj: int bool_or(int a, int b);
+Boolean: boolean.obj: int bool_xor(int a, int b);
+Boolean: boolean.obj: int bool_eq(int a, int b);
+Boolean: boolean.obj: int fromString(const char* s);
+Boolean: boolean.obj: int fromInteger(int v);
+Boolean: boolean.obj: int fromLong(long long v);
+Boolean: boolean.obj: int fromDouble(double v);
+Boolean: boolean.obj: long long filebool_create_auto(FileBool* dst, int value);
+Boolean: boolean.obj: int filebool_get(FileBool* dst);
+Boolean: boolean.obj: long long filebool_set(FileBool* dst, int value);
+Boolean: boolean.obj: void filebool_free(FileBool* dst);
+
+Map: map.obj: void runtime_init();
+Map: map.obj: void string_from_cstr(AsmString* dst, const char* src);
+Map: map.obj: void string_free(AsmString* s);
+Map: map.obj: long long string_equals(const AsmString* a, const AsmString* b);
+Map: map.obj: unsigned char string_char_at(const AsmString* s, unsigned long long idx);
+Map: map.obj: void print_cstr(const char* s);
+Map: map.obj: void print_string(const AsmString* s);
+Map: map.obj: void print_uint(unsigned long long v);
+Map: map.obj: void* map_create(unsigned long long bucket_count,
+                 unsigned long long (*hash_fn)(const void*),
+                 long long (*equals_fn)(const void*, const void*));
+Map: map.obj: unsigned long long map_put(void* map, const void* key, const void* value);
+Map: map.obj: void* map_get(void* map, const void* key);
+Map: map.obj: long long map_contains_key(void* map, const void* key);
+Map: map.obj: unsigned long long map_remove(void* map, const void* key);
+Map: map.obj: unsigned long long map_size(void* map);
+Map: map.obj: unsigned long long map_is_empty(void* map);
+Map: map.obj: void map_clear(void* map);
+Map: map.obj: void map_free(void* map);
+
+Thread: thread.obj: void runtime_init();
+Thread: thread.obj: void string_from_cstr(AsmString* dst, const char* src);
+Thread: thread.obj: void string_free(AsmString* s);
+Thread: thread.obj: void print_cstr(const char* s);
+Thread: thread.obj: void print_string(const AsmString* s);
+Thread: thread.obj: void print_uint(unsigned long long v);
+Thread: thread.obj: void thread_init();
+Thread: thread.obj: long long thread_run(const char* name, void (*cb)(const char* name, void* cache, void* user_data), void* user_data);
+Thread: thread.obj: long long thread_join(long long handle);
+Thread: thread.obj: void thread_cache_set_string(const char* name, const AsmString* value);
+Thread: thread.obj: long long thread_cache_get_string(const char* name, AsmString* out);
+Thread: thread.obj: void thread_cache_set_int(const char* name, int value);
+Thread: thread.obj: long long thread_cache_get_int(const char* name, int* out);

@@ -1,0 +1,6 @@
+MiniArrayTest ->
+    main{String[] args} -->
+        Integer[] arr = {10, 20};
+        print(arr[0]);
+    <--
+<-

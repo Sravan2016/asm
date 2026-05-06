@@ -1,0 +1,28 @@
+TARGET win64
+OUTPUT sample.s
+
+OBJ build/asm_pure_obj/string.obj
+OBJ build/asm_pure_obj/integer.obj
+
+EXTERN runtime_init
+EXTERN print_cstr
+EXTERN print_string
+EXTERN string_from_cstr
+EXTERN string_free
+EXTERN int_add
+
+DATA msg_prefix cstr "S value = "
+DATA msg_hi     cstr "Hi"
+DATA msg_nl     cstr "\n"
+
+GLOBAL s AsmString
+
+FUNC main
+  CALL runtime_init
+  CALL string_from_cstr &s msg_hi
+  CALL print_cstr msg_prefix
+  CALL print_string &s
+  CALL print_cstr msg_nl
+  CALL string_free &s
+  RET 0
+END

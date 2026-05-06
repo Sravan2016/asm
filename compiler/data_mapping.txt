@@ -1,0 +1,78 @@
+Lexical Analysis
+1. Purpose
+Lexical analysis is the first phase of a compiler. Its job is to read raw source text and convert it into a sequence of meaningful units called tokens. This phase sits between the input text and the parser. The parser should not deal with individual characters; it should receive a cleaner stream such as identifiers, keywords, operators, literals, and punctuation.
+A lexer does not usually understand full program structure. It only groups characters into valid lexical units and reports invalid character patterns early.
+2. Responsibilities
+The lexer exists to convert character sequences into tokens, remove irrelevant text such as whitespace and comments, and preserve source positions for diagnostics.
+From the source text count = total + 42; a lexer may produce Identifier("count"), Assign("="), Identifier("total"), Plus("+"), IntegerLiteral("42"), and Semicolon(";").
+3. Input and Output
+The input to lexical analysis is a source file represented as a stream of characters. The output is a sequence of tokens. Each token normally contains a token kind, the lexeme or parsed value, and the source location such as line and column.
+A practical token structure in C++ can include TokenKind kind, std::string lexeme, int line, and int column. Some compilers also attach decoded literal values when appropriate.
+4. Token Categories
+Typical token classes include keywords, identifiers, literals, operators, separators or delimiters, comments, and whitespace. Keywords are reserved words such as if, else, while, and return. Identifiers are programmer-defined names such as x, sum, or calculateTotal.
+Literals include integers, floating-point numbers, strings, characters, and booleans. Operators include symbols such as +, -, *, /, ==, !=, and <=. Delimiters include parentheses, braces, commas, and semicolons. Comments and whitespace are usually skipped unless the language gives them structural meaning.
+5. Core Responsibilities
+A well-designed lexer reads characters one by one, groups them into tokens, skips whitespace, skips comments, recognizes keywords and identifiers, parses numeric and string literals, detects invalid characters, detects malformed tokens, and tracks exact positions.
+It should not perform parsing, type checking, or scope resolution. Those concerns belong to later compiler stages.
+6. Internal State
+A practical lexer maintains the source text, a current index, and current line and column counters. Common helper functions are peek(), peekNext(), advance(), match(c), and isAtEnd(). These helpers keep the scanning code local and predictable.
+A minimal implementation in C++ usually stores std::string source, size_t pos, int line, and int column inside a Lexer class.
+7. Basic Workflow
+A common scanning loop is: skip whitespace and comments, inspect the current character, choose the matching token rule, consume the relevant characters, emit the token, and repeat until the end of input. At the end, the lexer should emit an explicit EOF token.
+This keeps the parser interface clean and makes end-of-input handling much simpler.
+8. Whitespace Handling
+Most languages treat whitespace as a separator rather than a meaningful token. The lexer usually skips spaces, tabs, carriage returns, and newlines while still updating source coordinates correctly. Newlines increment the line counter and reset the column counter.
+Even when whitespace is ignored semantically, it remains important for error reporting.
+9. Comment Handling
+Comments are usually removed during lexical analysis. Single-line comments continue until the end of the line. Multi-line comments continue until their closing delimiter. The lexer must detect unterminated block comments and continue to track line numbers while scanning through them.
+If the language forbids nested comments, that rule should be enforced here.
+10. Identifier and Keyword Recognition
+Identifiers and keywords often share the same scanning rule. A common rule is that the first character must be a letter or underscore, and the remaining characters may be letters, digits, or underscores. After scanning the full word, the lexer checks whether it matches a reserved keyword.
+This approach avoids separate logic for each keyword and correctly distinguishes while from whileCount.
+11. Numeric Literal Recognition
+Numeric scanning becomes complex quickly. A language may support decimal integers, hexadecimal, binary, octal, floating-point numbers, exponent notation, and suffixes. A first compiler should usually begin with decimal integers only.
+The rule is simple: once a digit is seen, continue consuming digits. Later support for floating-point and prefixed bases can be added after the core lexer is stable.
+12. String and Character Literals
+Strings require consuming an opening quote, reading until the closing quote, handling escape sequences, and detecting unterminated input. Common escapes include \n, \t, \", and \\.
+Character literals follow similar rules but must validate that only one logical character is present, unless it is represented through an escape sequence.
+13. Operators and the Longest Match Rule
+Operators often overlap. For example, = and ==, or ! and !=. The lexer should usually apply the longest match rule so that == becomes one token rather than two. The standard approach is to inspect the current character and conditionally consume the next one if it forms a longer valid operator.
+This rule also matters for <=, >=, &&, ||, ++, --, and similar operators.
+14. Delimiters and Punctuation
+Single-character tokens such as parentheses, braces, brackets, commas, semicolons, and colons are usually straightforward. Some languages still require care because symbols like a period may act either as punctuation or as part of a floating-point literal.
+Clear lexical rules avoid downstream ambiguity.
+15. EOF Token
+An explicit end-of-file token is useful for most parsers. It makes grammar termination clearer and simplifies parser control flow. A final token such as EndOfFile with the last known line and column is usually enough.
+16. Error Handling
+The lexer should detect unknown characters, unterminated strings, unterminated comments, invalid escapes, and malformed numeric forms. Errors should be reported with exact positions. A practical error would look like: Lexical error at line 1, column 5: unexpected character '@'.
+A simple compiler may stop on the first lexical error. A more advanced one may emit error tokens and continue for better diagnostics.
+17. Source Position Tracking
+Good diagnostics depend on precise source spans. Each token should store at least a starting line and column, and often an ending position as well. A SourceLocation or SourceSpan structure usually pays for itself quickly once parsing and semantic checks are added.
+18. Example Implementation Strategy
+A practical beginner implementation in C++ begins by defining TokenKind and Token, then helper functions for navigation, followed by scanners such as scanIdentifierOrKeyword(), scanNumber(), scanString(), skipWhitespaceAndComments(), and nextToken(). The lexer should then return tokens repeatedly until EOF is produced.
+This keeps the design modular and makes token-specific bugs easier to isolate.
+19. Example Tokenization
+For the source if (x <= 10) { return x + 1; }, a reasonable token stream is If, LeftParen, Identifier("x"), LessEqual, IntegerLiteral("10"), RightParen, LeftBrace, Return, Identifier("x"), Plus, IntegerLiteral("1"), Semicolon, RightBrace, and EOF.
+This is the level of abstraction the parser should consume.
+20. Automata Perspective
+Lexers are often described using finite automata because most token patterns are regular languages. Lexer generators rely on this theory. In practice, many small and medium compilers still use handwritten lexers because they are easier to integrate with custom error messages and project-specific conventions.
+The theory matters, but a manual implementation is usually the correct first step for learning and for small language projects.
+21. Handwritten vs Generated Lexer
+A handwritten lexer gives direct control, better diagnostics, and is easier to adapt. A generated lexer scales well for large rule sets and formal specifications. For a first compiler, handwritten scanning is usually the better tradeoff.
+The main downside is that edge cases must be tested carefully.
+22. Interaction With the Parser
+The parser should interact with the lexer through a clean interface. The lexer can either generate the full token list up front or produce tokens on demand. Batch mode is easy to inspect and debug. On-demand mode integrates cleanly and uses less memory.
+Both approaches are valid for a small compiler.
+23. Testing Lexical Analysis
+Lexer testing should be isolated from parser testing. Tests should cover identifiers, keywords, integers, operators, comments, strings, whitespace, malformed input, and exact location tracking. Failure cases such as unterminated strings should verify both that an error occurs and that the reported location is correct.
+Good lexer tests are small, explicit, and stable.
+24. Common Lexer Bugs
+Frequent issues include off-by-one column tracking, consuming one extra character, failing longest-match logic, treating keywords as identifiers, mishandling escaped strings, broken comment skipping, poor EOF handling, and incorrect handling of Windows line endings.
+These are common implementation bugs, not edge-case theory. They should be expected and tested directly.
+25. Minimal Scope for a First Lexer
+A realistic first lexer should support identifiers, keywords, integer literals, basic arithmetic and comparison operators, parentheses, braces, semicolons, commas, whitespace, single-line comments, EOF, and source locations. Strings, floats, characters, and block comments can be added later.
+26. Development Plan
+A practical order is: define TokenKind, define Token, implement character navigation helpers, implement whitespace skipping, implement identifier scanning, implement keyword recognition, implement integer scanning, implement operator scanning with longest-match logic, implement delimiter scanning, add comments, add line and column tracking, add error reporting, add tests, and only then extend support for strings and characters.
+This keeps the implementation stable while expanding coverage gradually.
+27. Conclusion
+Lexical analysis is a focused but critical compiler stage. Its purpose is to transform raw characters into a structured token stream that the parser can use reliably. A good lexer is simple in architecture, precise in token recognition, and strict in error reporting. For a beginner compiler, the best approach is a handwritten lexer with a small token set, exact source tracking, and strong tests.

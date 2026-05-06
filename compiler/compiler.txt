@@ -1,0 +1,314 @@
+Compiler Development Guide
+1. Introduction
+A compiler is a program that translates source code written in one language into another form, usually machine code, bytecode, or an intermediate representation. Developing a compiler requires both theoretical understanding and disciplined engineering. The work is usually divided into clear stages so that each concern can be implemented, tested, and improved independently.
+This document outlines a practical approach to building a compiler from scratch.
+2. Objectives
+Before implementation begins, define the goal of the compiler clearly.
+Typical goals include:
+• Compiling a small educational language
+• Implementing a subset of an existing language
+• Translating to bytecode for a virtual machine
+• Translating to LLVM IR
+• Generating native machine code
+A first compiler should target a small, well-defined language. Trying to support too much syntax or too many features early usually slows progress and increases complexity.
+3. Compiler Pipeline Overview
+A typical compiler consists of the following stages:
+1. Lexical Analysis
+2. Parsing
+3. Semantic Analysis
+4. Intermediate Representation Generation
+5. Optimization
+6. Code Generation
+7. Linking / Runtime Support
+Each stage consumes the output of the previous stage.
+4. Language Design
+Before writing compiler code, define the language.
+Important elements to specify:
+• Keywords
+• Operators
+• Literals
+• Variable declarations
+• Type system
+• Function definitions
+• Scope rules
+• Control flow (if, while, for, return)
+• Error handling rules
+A written grammar is essential. Even a simple language should have a documented syntax.
+Example features for a first language:
+• Integers
+• Booleans
+• Variables
+• Arithmetic expressions
+• Comparison operators
+• if statements
+• while loops
+• Functions
+• Basic static typing
+5. Lexical Analysis
+The lexer, or tokenizer, reads the source text and converts it into a stream of tokens.
+Example input:
+x = 10 + 20;
+Example tokens:
+• Identifier(x)
+• Assign(=)
+• Number(10)
+• Plus(+)
+• Number(20)
+• Semicolon(;)
+Responsibilities of the lexer
+• Skip whitespace and comments
+• Recognize keywords and identifiers
+• Recognize literals
+• Track source positions for error reporting
+Common lexer output structure
+Each token should usually contain:
+• token kind
+• lexeme
+• line number
+• column number
+6. Parsing
+The parser converts tokens into an Abstract Syntax Tree (AST).
+Example AST for 10 + 20:
+BinaryExpr(+)
+  Number(10)
+  Number(20)
+Parser approaches
+Common strategies:
+• Recursive descent parser
+• Pratt parser for expressions
+• LR/LALR parser using generator tools
+For a first compiler, a recursive descent parser is usually the best choice because it is straightforward to implement and debug.
+Parser responsibilities
+• Consume tokens in valid order
+• Build AST nodes
+• Detect syntax errors
+• Recover from errors when possible
+7. Abstract Syntax Tree
+The AST is the structured representation of the source program.
+Typical node types:
+• Program
+• FunctionDecl
+• VariableDecl
+• BlockStmt
+• IfStmt
+• WhileStmt
+• ReturnStmt
+• BinaryExpr
+• UnaryExpr
+• LiteralExpr
+• IdentifierExpr
+• CallExpr
+The AST should represent program meaning cleanly, not every punctuation mark from the source.
+8. Semantic Analysis
+Semantic analysis verifies that the program is meaningful according to the language rules.
+This stage usually includes:
+• Name resolution
+• Scope handling
+• Symbol table construction
+• Type checking
+• Function signature validation
+• Return path checks
+Examples of semantic errors
+• Use of an undeclared variable
+• Assigning a boolean to an integer variable
+• Calling a function with the wrong number of arguments
+• Returning the wrong type
+This is where many real compiler complexities begin. Parsing only checks structure; semantic analysis checks correctness.
+9. Symbol Tables and Scope Management
+A symbol table stores information about identifiers.
+Typical symbol data includes:
+• name
+• kind (variable, function, parameter, type)
+• declared type
+• scope level
+• storage information
+Scopes are usually nested. For example:
+• global scope
+• function scope
+• block scope
+A stack of symbol tables or a tree of scopes is a common implementation.
+10. Intermediate Representation (IR)
+An intermediate representation sits between the AST and the final output. It simplifies optimization and backend work.
+Common choices:
+• Three-address code
+• SSA-based IR
+• LLVM IR
+• Custom bytecode
+Why use an IR
+• separates frontend and backend
+• simplifies transformations
+• makes optimization possible
+• improves portability
+For a serious compiler, IR is not optional. For a toy compiler, you can begin without it, but adding it later is usually worth the effort.
+11. Optimization
+Optimization improves generated code without changing behavior.
+Examples:
+• constant folding
+• dead code elimination
+• common subexpression elimination
+• strength reduction
+• inline expansion
+A beginner compiler should start with very small optimizations, such as:
+• evaluating constant expressions at compile time
+• removing unreachable code
+Do not start with complex optimization passes. Correctness matters first.
+12. Code Generation
+Code generation translates IR or AST into the target output.
+Possible targets:
+• C code
+• LLVM IR
+• custom VM bytecode
+• assembly
+• machine code
+Recommended targets for a first compiler
+Start with one of these:
+• LLVM IR if you want a professional backend
+• C code if you want simplicity
+• custom bytecode if you want to learn both compiler and VM design
+Direct machine code generation is possible, but it adds significant complexity.
+13. Runtime Support
+Many languages need runtime services.
+Possible runtime components:
+• memory allocator
+• garbage collector
+• string library
+• array support
+• I/O helpers
+• exception support
+If the language is small, the runtime can also be small. For an initial compiler, avoid advanced runtime features unless they are necessary.
+14. Error Reporting
+A compiler is only usable if diagnostics are clear.
+Good error messages should include:
+• exact source location
+• what went wrong
+• expected vs actual input or type
+• short contextual hints where possible
+Error at line 8, column 15: expected integer but found boolean in assignment
+Diagnostic quality has major impact on developer experience.
+15. Testing Strategy
+Compiler development requires continuous testing.
+Test categories
+• lexer tests
+• parser tests
+• semantic analysis tests
+• code generation tests
+• runtime tests
+• regression tests
+Recommended practice
+• write small focused tests
+• keep invalid programs as test cases
+• compare AST or IR output where useful
+• run generated programs and verify results
+For codegen, end-to-end tests are important.
+16. Suggested Project Structure
+A clean project layout helps keep stages separated.
+compiler/
+  lexer/
+  parser/
+  ast/
+  sema/
+  symbols/
+  ir/
+  optimizer/
+  codegen/
+  runtime/
+  tests/
+  docs/
+If the project is small, these may begin as modules instead of directories.
+17. Recommended Development Plan
+Phase 1: Define a minimal language
+Implement only:
+• integer literals
+• arithmetic
+• variables
+• assignments
+• blocks
+• if
+• while
+• functions
+• return statements
+Phase 2: Build the frontend
+Implement:
+• lexer
+• parser
+• AST
+• syntax diagnostics
+Phase 3: Add semantics
+Implement:
+• symbol tables
+• scope resolution
+• type checking
+Phase 4: Add execution path
+Choose one:
+• interpret AST directly, or
+• lower to IR and emit target code
+A useful approach is to write an interpreter first, then reuse the frontend for compilation.
+Phase 5: Add backend
+Generate one of:
+• C
+• LLVM IR
+• bytecode
+Phase 6: Improve diagnostics and testing
+Refine:
+• error locations
+• invalid program tests
+• regression coverage
+Phase 7: Add optimization
+Begin with:
+• constant folding
+• dead code removal
+18. Technology Choices
+C or C++
+Good when:
+• you want systems-level control
+• you want to understand low-level implementation details
+• you may later generate native code directly
+Rust
+Good when:
+• you want stronger memory safety
+• you still want systems-level performance
+• you accept slightly higher implementation friction early on
+Python
+Good when:
+• your priority is learning compiler structure quickly
+• performance is not critical
+• you want rapid iteration
+LLVM
+Good when:
+• you want mature backend infrastructure
+• you need optimization and portability
+• you do not want to write assembly generation yourself
+19. Common Mistakes
+Typical failures in first compiler projects:
+• starting without a written grammar
+• mixing parsing and semantic logic too early
+• skipping source position tracking
+• generating code directly from raw parser output
+• avoiding tests until late
+• trying to support too many language features at once
+A compiler project should be incremental. Each stage should work before the next becomes large.
+20. Recommended Learning Order
+A practical order is:
+1. Expression parsing
+2. AST construction
+3. Variables and assignments
+4. Scope management
+5. Type checking
+6. Control flow
+7. Functions
+8. IR design
+9. Code generation
+10. Optimization
+This sequence keeps the project manageable.
+21. Conclusion
+Developing a compiler is best treated as a staged engineering effort rather than a single large implementation task. The most effective path is to define a small language, build a correct frontend, introduce semantic analysis early, and choose a simple backend target before attempting advanced optimizations.
+For a first compiler, the right goal is not sophistication. It is correctness, clarity, and a structure that can grow.
+22. Suggested Next Step
+A strong starter project is:
+A small statically typed language with integers, variables, functions, if, and while, compiling to LLVM IR or bytecode.
+That scope is large enough to teach real compiler design and small enough to finish.
+I can also turn this into:
+• a formal report
+• a PDF-style academic document
+• a project proposal
+• a step-by-step implementation guide in C++, Rust, or Python

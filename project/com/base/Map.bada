@@ -1,0 +1,14 @@
+Map->
+    mapFunctions{} -->
+      Map m=Map.of("key1","value1","key2","value2");
+      m.put("key3","value3");
+        m.get("key3");
+        m.containsKey("key3");
+        m.remove("key1");
+        m.size();
+        m.isEmpty();
+        println(m.toString());
+        m.clear();
+        println(m.toString());
+    <--
+<-

@@ -1,0 +1,49 @@
+from: com.base.ArraySample;
+Sample ->
+    Integer a = 10;
+    main{String[] args} -->
+      Integer a = 11;
+      Integer b = 20;
+      String s = "Hi";
+      println("S value = "+ s +"\n");
+      println("a + b = " + (a + b) +"\n");
+      println("a - b = " + (a - b) +"\n");
+      println("a * b = " + (a * b) +"\n");
+      println("b / a = " + (b / a) +"\n");
+
+      Integer[] arr = {10, 20, 30, 40};
+      print("Array -> ");
+      for (Integer i: arr){
+        print(i + " ");
+      }
+      println("");
+
+      for (Integer i: arr){
+        while (10 == i){
+          println(i + " from While loop\n");
+          i++;
+        }
+        if (i == 11) {
+          println("i from if loop " + i + "\n");
+        }
+      }
+      Integer i = loopFunctions{0, 15};
+      println("i value "+ i +"\n");
+      ArraySample.createArray{};
+    <--
+    loopFunctions{Integer i, Integer a} -->
+        println("a value "+a+" and i values "+i)
+      // while loop
+      while (a > i){
+        println(i +" from while in loopfunction\n");
+        i++;
+      }
+      //switch case
+      switch (i){
+        case 11: {
+           println("from switch in loopfunction values of i: "+ i +"\n");
+           }
+
+      }
+    [i]<--
+<-

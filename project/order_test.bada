@@ -1,0 +1,6 @@
+OrderTest ->
+    main{String[] args} -->
+        Integer x = 42;
+        println(x + " is the answer");
+    <--
+<-

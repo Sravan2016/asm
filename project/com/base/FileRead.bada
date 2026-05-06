@@ -1,0 +1,9 @@
+FileRead->
+    readFile{String path} -->
+       File f = File.of(path);
+        while(f.nextLine()){
+            String line = f.getLine();
+            println(line);
+        }
+    []<--
+ <-

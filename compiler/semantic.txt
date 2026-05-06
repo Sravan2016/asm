@@ -1,0 +1,84 @@
+Semantic Analysis
+1. Purpose
+Semantic analysis is the compiler phase that checks whether a parsed program is meaningful according to the language rules. Parsing only tells the compiler that the syntax is structurally valid. Semantic analysis checks whether names are declared, whether types match, whether function calls are legal, whether assignments are valid, and whether control flow obeys language constraints.
+This is the stage where the compiler moves from shape to meaning.
+2. Why Semantic Analysis Exists
+A parser can accept code like Integer a = "hello"; if the token order matches the grammar. It cannot, by itself, know that assigning a string to an integer is illegal. Likewise, a parser can build a call node for foo(x, y), but it does not know whether foo exists, how many parameters it expects, or what types those parameters require.
+Semantic analysis resolves these questions and prevents invalid programs from reaching code generation.
+3. Inputs and Outputs
+The input to semantic analysis is usually an AST produced by the parser. The output is either a validated and annotated AST, or an error list that explains why the program is semantically invalid. Many compilers also attach type information, symbol references, and scope identifiers to AST nodes during this phase.
+Later phases such as IR generation and optimization depend on these semantic annotations.
+4. Main Responsibilities
+The major responsibilities of semantic analysis are name resolution, scope handling, symbol table construction, type checking, function signature checking, member access validation, assignment validation, return checking, and enforcement of context-sensitive language rules.
+Different languages add more responsibilities such as trait resolution, overload resolution, generics, lifetime analysis, or borrow checking, but the core idea remains the same.
+5. Name Resolution
+Name resolution determines what each identifier refers to. When the compiler sees x, it must answer whether x refers to a local variable, a parameter, a field, a function, a type, or some other symbol. This requires walking scopes and binding each identifier use to a declaration.
+If a name cannot be resolved, semantic analysis reports an undeclared identifier error with the exact source location.
+6. Scope Handling
+Scopes define where declarations are visible. Typical scopes include global scope, class scope, method scope, parameter scope, and block scope. Semantic analysis must enter a new scope when it begins analyzing a block or declaration context and leave that scope when the context ends.
+This is what lets a local variable shadow an outer variable while still preserving the correct reference target for each name.
+7. Symbol Tables
+A symbol table stores information about declared names. Each symbol typically includes its name, kind, declared type, source location, and sometimes additional metadata such as storage class, mutability, visibility, or parameter position.
+A common implementation is a stack of hash maps, one per scope. When a declaration is encountered, it is inserted into the current scope. When an identifier is used, scopes are searched from innermost to outermost until a match is found.
+8. Duplicate Declarations
+Semantic analysis should reject invalid redeclarations in the same scope. For example, two local variables with the same name in one block are usually illegal. Two parameters with the same name are also usually illegal. Some languages permit shadowing only across nested scopes, not within the same one.
+These checks belong in symbol insertion logic because that is where duplicate visibility becomes explicit.
+9. Type Systems
+Type checking depends on a model of the language type system. Even a small compiler should define the primitive types clearly: Integer, String, Long, Double, Boolean, arrays, and user-defined class types if supported. The compiler should also define whether implicit conversions are allowed, whether arrays are covariant or invariant, and what types operators accept and produce.
+Without an explicit type model, semantic analysis becomes inconsistent and difficult to extend.
+10. Type Checking Expressions
+Each expression must be assigned a type. Integer literals produce Integer or Long depending on the language rule. String literals produce String. Identifier expressions inherit the type of the symbol they resolve to. Binary and unary expressions are checked based on operator rules.
+For example, if a + b is parsed, semantic analysis must ensure that both operands support addition and that the result type is defined. Integer plus Integer may produce Integer, while String plus String may produce String, and String plus Integer may or may not be legal depending on the language.
+11. Assignment Checking
+Assignments require two checks. First, the left-hand side must be assignable. That means it must refer to a variable, field, array element, or some writable target. Second, the right-hand side type must be compatible with the target type.
+An expression like (a + b) = c is syntactically parseable in some parsers but semantically invalid because a binary expression is not assignable.
+12. Operator Validation
+Operators must be checked against operand types. Arithmetic operators usually require numeric operands. Logical operators require booleans. Comparison operators require either compatible numeric types or other explicitly comparable types. Equality may be allowed for a wider set of values than ordering comparisons.
+Semantic analysis should reject unsupported combinations such as String * Boolean unless the language explicitly defines them.
+13. Function and Method Resolution
+When semantic analysis sees a call expression, it must resolve the callee and validate the call. That includes checking that the symbol exists, that it is callable, that the number of arguments matches, and that each argument type is compatible with the corresponding parameter type.
+If methods are attached to object types, member lookup must happen before call validation. The compiler must know whether obj.method refers to a real method on that type.
+14. Return Checking
+If a function or method declares a return type, semantic analysis must ensure that returned expressions match that type. It should also check whether all required control-flow paths return a value. For void or no-value methods, it must ensure that return usage follows the language rule.
+Missing return statements are semantic errors, not parser errors.
+15. Array Semantics
+Array expressions and array indexing need dedicated checks. The index expression must be of an allowed numeric type. The indexed object must actually be an array or another indexable type. Array literals must have elements that are mutually compatible with the array element type.
+If the language permits explicit array types like Integer[], semantic analysis must preserve the element type and carry it through indexing expressions.
+16. Control-Flow Validation
+Conditions in if, while, and similar constructs are often required to be Boolean. Loop variables in foreach-style constructs must match the iterable element type. Switch labels may need to match the switch expression type, and duplicate case labels may be disallowed.
+These are context-sensitive checks that the parser cannot enforce.
+17. Type Inference and Propagation
+Even if the language is mostly explicit, semantic analysis often needs to propagate types through expressions and statements. The type of a binary expression depends on its operands. The type of a variable declaration with an initializer may be validated against the declared type. If the language permits inferred locals, the initializer may define the variable type directly.
+Once a node's type is computed, later checks should reuse that result instead of recomputing it.
+18. Context-Sensitive Rules
+Some rules cannot be expressed cleanly in the grammar. Examples include break only inside loops or switches, continue only inside loops, return only inside functions, field access only on objects that expose that field, and constructor calls only on constructible types. These rules belong in semantic analysis because they depend on context rather than local token order.
+This is one reason semantic analysis often needs an explicit analysis context stack.
+19. Multi-Pass Analysis
+Many compilers use more than one semantic pass. A first pass may collect declarations such as classes, methods, and global symbols. A second pass resolves references and checks bodies. This separation is useful when code can refer to declarations that appear later in the file.
+For small languages, a single pass may work, but multi-pass analysis becomes easier to manage as language features grow.
+20. AST Annotation
+A practical semantic analyzer usually annotates AST nodes with resolved symbol references and inferred types. For example, an identifier node may point directly to its symbol-table entry, and a binary expression may store its computed result type. These annotations make later compilation stages much simpler because code generation no longer needs to redo semantic reasoning.
+This also keeps diagnostics stable because the meaning of each node has been fixed before lowering begins.
+21. Error Reporting
+Semantic error messages should be precise and local. Good messages include the source location, the invalid construct, and the expected rule. Examples are: undeclared variable 'x', cannot assign String to Integer, function foo expects 2 arguments but got 3, or method bar is not defined for type String.
+Good semantic diagnostics often matter more to users than parser diagnostics because semantic errors are closer to real programming intent.
+22. Error Recovery
+Semantic analysis should generally continue after individual errors when possible so that a single compiler run can report multiple issues. This requires defensive logic. If an expression has an invalid type, later checks may use an error type sentinel instead of aborting immediately. This prevents one type error from cascading into dozens of meaningless follow-up messages.
+Controlled recovery is a sign of a usable compiler.
+23. Symbol and Type Design in C++
+In C++, a practical semantic analyzer often uses structs or classes for Symbol, Scope, and Type. Types may be modeled as tagged values such as Primitive, Array, Function, and Class, or as an inheritance hierarchy. Scopes can be implemented as parent-linked maps. Symbols often point back to their declarations and carry enough metadata for diagnostics and code generation.
+The main goal is not cleverness. It is stable and explicit meaning.
+24. Semantic Analysis Workflow
+A practical workflow is: collect top-level declarations, build initial symbol tables, analyze each declaration body in scope, resolve names inside expressions and statements, infer and validate expression types, check assignments and calls, validate returns and control-flow contexts, then store annotations and errors.
+This workflow scales well from small educational compilers to serious frontends.
+25. Common Semantic Errors
+Typical semantic errors include undeclared names, duplicate declarations, incompatible assignments, wrong argument counts, wrong argument types, invalid member access, invalid indexing, non-Boolean conditions, unreachable return types, invalid returns, and misuse of operators on unsupported operand types.
+Every compiler frontend should have direct tests for each of these classes.
+26. Testing Strategy
+Semantic analysis tests should be separate from parser tests. Useful tests include name resolution cases, shadowing cases, duplicate declaration failures, operator typing, call validation, return validation, array typing, and deliberately invalid programs that should produce specific diagnostics. Tests should also confirm that valid programs receive the correct inferred types on important expressions.
+The more language rules you encode, the more important targeted semantic tests become.
+27. Minimal Development Plan
+A practical semantic-analysis build order is: define the type model, define symbol and scope data structures, implement top-level declaration collection, implement local scope creation, implement name resolution, implement expression typing, implement operator and assignment checks, implement call and return validation, add error accumulation, and then add focused tests.
+This order works because every later rule depends on symbol visibility and type availability.
+28. Conclusion
+Semantic analysis is the stage that proves a syntactically valid program also makes sense. It binds names, manages scopes, validates types, and enforces language-specific meaning rules. A good semantic analyzer is explicit, conservative, and precise in its diagnostics. For a small compiler, building symbol tables and type checking around a well-formed AST is the correct starting point.
