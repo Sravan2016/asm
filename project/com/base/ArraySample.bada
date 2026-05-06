@@ -74,8 +74,10 @@ ArraySample :: FileRead :: Map->
             Boolean b = a>b;
             return b;
        });
-       print("hi");
+       println(" Before MapFunction ");
         mapFunctions{};
-        readFile{"./ArraySample.bada"}
+        println(" After MapFunction and before readFile ");
+        readFile{"./project/com/base/ArraySample.bada"};
+        println("After readFile");
     []<--
 <-

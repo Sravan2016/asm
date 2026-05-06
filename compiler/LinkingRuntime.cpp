@@ -1,6 +1,7 @@
 #include "LinkingRuntime.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -487,7 +488,10 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
         case IROpcode::ConstDouble: {
             stack_offset_ -= 8;
             var_map_[inst.result] = {stack_offset_, inst.type, false};
-            out << "    mov " << rax << ", " << static_cast<int64_t>(inst.double_value) << "\n";
+            uint64_t bits = 0;
+            static_assert(sizeof(bits) == sizeof(inst.double_value), "double size mismatch");
+            std::memcpy(&bits, &inst.double_value, sizeof(bits));
+            out << "    mov " << rax << ", " << bits << "\n";
             out << "    mov [rbp" << stack_offset_ << "], " << rax << "\n";
             break;
         }
@@ -1090,7 +1094,7 @@ bool LinkingRuntime::link_executable(const std::string& input_obj_path,
         "string.obj", "integer.obj", "array.obj", "boolean.obj",
         "double.obj", "long.obj", "map.obj", "badaapi_ptrs.obj",
         "thread.obj", "httpclient.obj", "httpserver.obj",
-        "sock.obj", "file.obj"
+        "sock.obj"
     };
 
     for (const auto& obj : runtime_objs) {
@@ -1098,6 +1102,7 @@ bool LinkingRuntime::link_executable(const std::string& input_obj_path,
     }
 
     // Heap object (from asm_file_obj)
+    cmd << " \"" << rdir << "/../asm_file_obj/readwritefile.obj\"";
     cmd << " \"" << rdir << "/../asm_file_obj/heap.obj\"";
 
     // Extra objects
@@ -1260,15 +1265,15 @@ RuntimeRegistry::RuntimeRegistry() {
     functions_["map_to_string"]    = {"map_to_string",    {"ptr","ptr"},       "void", "map.obj"};
 
     // File functions
-    functions_["file_read_all"]              = {"file_read_all",              {"ptr","ptr"},       "bool", "file.obj"};
-    functions_["file_print_lines_count"]     = {"file_print_lines_count",     {"ptr"},             "bool", "file.obj"};
-    functions_["file_line_reader_open"]      = {"file_line_reader_open",      {"ptr"},             "bool", "file.obj"};
-    functions_["file_line_reader_open_string"]= {"file_line_reader_open_string", {"ptr"},          "bool", "file.obj"};
-    functions_["file_line_reader_next"]      = {"file_line_reader_next",      {"ptr"},             "bool", "file.obj"};
-    functions_["file_line_reader_close"]     = {"file_line_reader_close",     {},                  "void", "file.obj"};
-    functions_["file_line_reader_line_count"]= {"file_line_reader_line_count",{},                  "i64",  "file.obj"};
-    functions_["file_count_lines"]           = {"file_count_lines",           {"ptr"},             "i64",  "file.obj"};
-    functions_["file_get_line_at"]           = {"file_get_line_at",           {"ptr","i64","ptr"}, "bool", "file.obj"};
+    functions_["file_read_all"]              = {"file_read_all",              {"ptr","ptr"},       "bool", "readwritefile.obj"};
+    functions_["file_print_lines_count"]     = {"file_print_lines_count",     {"ptr"},             "bool", "readwritefile.obj"};
+    functions_["file_line_reader_open"]      = {"file_line_reader_open",      {"ptr"},             "bool", "readwritefile.obj"};
+    functions_["file_line_reader_open_string"]= {"file_line_reader_open_string", {"ptr"},          "bool", "readwritefile.obj"};
+    functions_["file_line_reader_next"]      = {"file_line_reader_next",      {"ptr"},             "bool", "readwritefile.obj"};
+    functions_["file_line_reader_close"]     = {"file_line_reader_close",     {},                  "void", "readwritefile.obj"};
+    functions_["file_line_reader_line_count"]= {"file_line_reader_line_count",{},                  "i64",  "readwritefile.obj"};
+    functions_["file_count_lines"]           = {"file_count_lines",           {"ptr"},             "i64",  "readwritefile.obj"};
+    functions_["file_get_line_at"]           = {"file_get_line_at",           {"ptr","i64","ptr"}, "bool", "readwritefile.obj"};
 
     // Thread functions
     functions_["runtime_init"] = {"runtime_init", {}, "void", "string.obj"};

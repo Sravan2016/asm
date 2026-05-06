@@ -32,16 +32,8 @@ endfunction()
 collect_asm_objects(ASM_PURE_OBJECTS "${CMAKE_SOURCE_DIR}/asm_pure" "${CMAKE_SOURCE_DIR}/build/asm_pure_obj")
 collect_asm_objects(ASM_FILE_OBJECTS "${CMAKE_SOURCE_DIR}/asm_file" "${CMAKE_SOURCE_DIR}/build/asm_file_obj")
 
-
 set(READWRITEFILE_OBJ "${CMAKE_SOURCE_DIR}/build/asm_file_obj/readwritefile.obj")
 set(HEAP_OBJ_COMPAT "${CMAKE_SOURCE_DIR}/build/asm_file_obj/heap.obj")
-
-add_custom_command(
-        OUTPUT "${FILE_OBJ_COMPAT}"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${READWRITEFILE_OBJ}" "${FILE_OBJ_COMPAT}"
-        DEPENDS "${READWRITEFILE_OBJ}"
-        VERBATIM
-)
 
 add_library(http_asm STATIC
         asm_pure/sock.s
@@ -102,7 +94,6 @@ target_link_libraries(bada_symbols PRIVATE ntdll)
 add_custom_target(asm_pure_obj_runtime
         DEPENDS
         ${ASM_PURE_OBJECTS}
-        "${FILE_OBJ_COMPAT}"
 )
 
 add_dependencies(executor_cpp asm_pure_obj_runtime asm_file_obj_runtime)

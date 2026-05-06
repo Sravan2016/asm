@@ -8,6 +8,9 @@
 .extern HeapFree
 .extern print_cstr
 .extern print_uint
+.extern string_from_cstr
+.extern string_length
+.extern string_char_at
 
 .extern heap_handle
 
@@ -609,12 +612,79 @@ file_line_reader_open:
 
 file_line_reader_open_string:
     # rcx=AsmString* path -> rax=1/0
+    push rbx
+    push r12
+    push r13
+    push r14
     test rcx, rcx
     jz .open_string_fail
-    mov rcx, [rcx]
-    jmp file_line_reader_open
+    mov rbx, rcx
+
+    sub rsp, 32
+    mov rcx, rbx
+    call string_length
+    add rsp, 32
+    mov r12, rax
+
+    lea rax, [rip + heap_handle]
+    mov rcx, [rax]
+    mov rdx, HEAP_ZERO_MEMORY
+    lea r8, [r12 + 1]
+    sub rsp, 32
+    call HeapAlloc
+    add rsp, 32
+    test rax, rax
+    jz .open_string_fail_pop
+    mov r13, rax
+
+    xor r14, r14
+.open_string_copy_loop:
+    cmp r14, r12
+    jae .open_string_copy_done
+    sub rsp, 32
+    mov rcx, rbx
+    mov rdx, r14
+    call string_char_at
+    add rsp, 32
+    mov byte ptr [r13 + r14], al
+    inc r14
+    jmp .open_string_copy_loop
+.open_string_copy_done:
+    mov byte ptr [r13 + r12], 0
+
+    sub rsp, 32
+    mov rcx, r13
+    call file_line_reader_open
+    add rsp, 32
+    mov r12, rax
+
+    lea rax, [rip + heap_handle]
+    mov rcx, [rax]
+    mov rdx, r13
+    xor r8, r8
+    sub rsp, 32
+    call HeapFree
+    add rsp, 32
+
+    mov rax, r12
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
 .open_string_fail:
     xor rax, rax
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+.open_string_fail_pop:
+    xor rax, rax
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
     ret
 
 file_line_reader_line_count:
@@ -695,9 +765,21 @@ file_line_reader_next:
 .copy_done_lr:
     mov byte ptr [r10 + rsi], 0
 
-    # set out
-    mov [rbx], r10
-    mov [rbx + 8], rsi
+    # convert the temporary C string into a real String object
+    sub rsp, 32
+    mov rcx, rbx
+    mov rdx, r10
+    call string_from_cstr
+    add rsp, 32
+
+    # free the temporary heap buffer
+    lea rax, [rip + heap_handle]
+    mov rcx, [rax]
+    mov rdx, r10
+    xor r8, r8
+    sub rsp, 32
+    call HeapFree
+    add rsp, 32
 
     # advance cursor
     lea r11, [r14 + r15]

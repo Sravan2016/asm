@@ -206,6 +206,10 @@ std::string file_runtime_name(const std::string& method) {
     return {};
 }
 
+bool is_string_semantic_type(const SemanticType& type) {
+    return type.kind == SemanticTypeKind::String;
+}
+
 std::string array_join_runtime_name(const IRType& array_type) {
     if (array_type.kind != IRTypeKind::Array || !array_type.element_type) {
         return "array_join";
@@ -1143,19 +1147,36 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                     std::size_t pair_count = expr.arguments.size() / 2;
                     emit(IRInstruction::make_const_int(bucket_count, static_cast<int64_t>(pair_count == 0 ? 8 : pair_count)));
 
-                    std::string null_hash = new_temporary();
-                    IRInstruction null_hash_inst;
-                    null_hash_inst.opcode = IROpcode::ConstPtr;
-                    null_hash_inst.type = IRType::makePointer();
-                    null_hash_inst.result = null_hash;
-                    emit(null_hash_inst);
+                    bool use_string_key_runtime = true;
+                    for (std::size_t i = 0; i < expr.arguments.size(); i += 2) {
+                        if (i >= expr.arguments.size()) break;
+                        if (!is_string_semantic_type(analyser_->expressionType(expr.arguments[i].get()))) {
+                            use_string_key_runtime = false;
+                            break;
+                        }
+                    }
 
-                    std::string null_equals = new_temporary();
-                    IRInstruction null_equals_inst;
-                    null_equals_inst.opcode = IROpcode::ConstPtr;
-                    null_equals_inst.type = IRType::makePointer();
-                    null_equals_inst.result = null_equals;
-                    emit(null_equals_inst);
+                    std::string hash_fn = new_temporary();
+                    IRInstruction hash_fn_inst;
+                    hash_fn_inst.opcode = IROpcode::ConstPtr;
+                    hash_fn_inst.type = IRType::makePointer();
+                    hash_fn_inst.result = hash_fn;
+                    if (use_string_key_runtime) {
+                        hash_fn_inst.string_value = "map_string_hash";
+                        module_.add_external_symbol("map_string_hash");
+                    }
+                    emit(hash_fn_inst);
+
+                    std::string equals_fn = new_temporary();
+                    IRInstruction equals_fn_inst;
+                    equals_fn_inst.opcode = IROpcode::ConstPtr;
+                    equals_fn_inst.type = IRType::makePointer();
+                    equals_fn_inst.result = equals_fn;
+                    if (use_string_key_runtime) {
+                        equals_fn_inst.string_value = "map_string_equals";
+                        module_.add_external_symbol("map_string_equals");
+                    }
+                    emit(equals_fn_inst);
 
                     std::string result_temp = new_temporary();
                     module_.add_external_symbol("map_create");
@@ -1163,7 +1184,7 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                     create_call.opcode = IROpcode::CallRuntime;
                     create_call.type = IRType::makePointer();
                     create_call.result = result_temp;
-                    create_call.operands = {"map_create", bucket_count, null_hash, null_equals};
+                    create_call.operands = {"map_create", bucket_count, hash_fn, equals_fn};
                     emit(create_call);
                     register_owned_value(result_temp, "map_free", CleanupOperandKind::DirectValue);
 
@@ -1190,6 +1211,8 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                         inst.opcode = IROpcode::ConstPtr;
                         inst.type = IRType::makePointer();
                         inst.result = hash_fn;
+                        inst.string_value = "map_string_hash";
+                        module_.add_external_symbol("map_string_hash");
                         emit(inst);
                     }
                     if (expr.arguments.size() <= 2) {
@@ -1197,6 +1220,8 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                         inst.opcode = IROpcode::ConstPtr;
                         inst.type = IRType::makePointer();
                         inst.result = equals_fn;
+                        inst.string_value = "map_string_equals";
+                        module_.add_external_symbol("map_string_equals");
                         emit(inst);
                     }
 

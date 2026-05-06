@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
 
     const char* pure_objs[] = {
         "string.obj", "integer.obj", "array.obj", "boolean.obj",
-        "double.obj", "file.obj", "httpclient.obj", "httpserver.obj",
+        "double.obj", "httpclient.obj", "httpserver.obj",
         "long.obj", "map.obj", "sock.obj", "thread.obj", "badaapi_ptrs.obj"
     };
 
@@ -217,6 +217,8 @@ int main(int argc, char** argv) {
     }
 
     join_path(heap_dir, "heap.obj", path_buf, sizeof(path_buf));
+    append_quoted(command, sizeof(command), path_buf);
+    join_path(heap_dir, "readwritefile.obj", path_buf, sizeof(path_buf));
     append_quoted(command, sizeof(command), path_buf);
     append_text(command, sizeof(command), "-o \".\\bada_run.exe\" ");
     append_text(command, sizeof(command),

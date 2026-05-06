@@ -24,6 +24,8 @@
 .global map_clear
 .global map_free
 .global map_to_string
+.global map_string_hash
+.global map_string_equals
 
 .equ GENERIC_READ, 0x80000000
 .equ GENERIC_WRITE, 0x40000000
@@ -94,6 +96,59 @@ map_make_path:
     mov byte ptr [rdx + 28], 0
     ret
 
+map_string_hash:
+    # rcx=key -> rax=hash
+    test rcx, rcx
+    jz .string_hash_null
+    push rbx
+    push r12
+    push r13
+    sub rsp, 32
+    mov rbx, rcx
+    mov rcx, rbx
+    call string_length
+    mov r12, rax
+    mov r13, 1469598103934665603
+    xor r10, r10
+.string_hash_loop:
+    cmp r10, r12
+    jae .string_hash_done
+    mov rcx, rbx
+    mov rdx, r10
+    call string_char_at
+    movzx rax, al
+    xor r13, rax
+    mov r11, 1099511628211
+    imul r13, r11
+    inc r10
+    jmp .string_hash_loop
+.string_hash_done:
+    mov rax, r13
+    add rsp, 32
+    pop r13
+    pop r12
+    pop rbx
+    ret
+.string_hash_null:
+    xor rax, rax
+    ret
+
+map_string_equals:
+    # rcx=lhs, rdx=rhs -> rax=1/0
+    test rcx, rcx
+    jz .string_equals_ptr
+    test rdx, rdx
+    jz .string_equals_ptr
+    sub rsp, 40
+    call string_equals
+    add rsp, 40
+    ret
+.string_equals_ptr:
+    cmp rcx, rdx
+    sete al
+    movzx eax, al
+    ret
+
 map_seek_entry:
     # rcx=map*, rdx=index -> rax=entry*
     mov rax, [rcx]
@@ -148,11 +203,43 @@ map_hash_key:
     # rcx=map*, rdx=key -> rax=hash
     mov r10, [rcx + 24]
     test r10, r10
-    jz .hash_ptr
+    jz .hash_default
     mov rcx, rdx
     sub rsp, 40
     call r10
     add rsp, 40
+    ret
+.hash_default:
+    test rdx, rdx
+    jz .hash_ptr
+    push rbx
+    push r12
+    push r13
+    sub rsp, 32
+    mov rbx, rdx
+    mov rcx, rbx
+    call string_length
+    mov r12, rax
+    mov r13, 1469598103934665603
+    xor r10, r10
+.hash_string_loop:
+    cmp r10, r12
+    jae .hash_string_done
+    mov rcx, rbx
+    mov rdx, r10
+    call string_char_at
+    movzx rax, al
+    xor r13, rax
+    mov r11, 1099511628211
+    imul r13, r11
+    inc r10
+    jmp .hash_string_loop
+.hash_string_done:
+    mov rax, r13
+    add rsp, 32
+    pop r13
+    pop r12
+    pop rbx
     ret
 .hash_ptr:
     mov rax, rdx
@@ -162,11 +249,22 @@ map_keys_equal:
     # rcx=map*, rdx=entry_key, r8=query_key -> rax=1/0
     mov r10, [rcx + 32]
     test r10, r10
-    jz .key_ptr_eq
+    jz .key_default_eq
     mov rcx, rdx
     mov rdx, r8
     sub rsp, 40
     call r10
+    add rsp, 40
+    ret
+.key_default_eq:
+    test rdx, rdx
+    jz .key_ptr_eq
+    test r8, r8
+    jz .key_ptr_eq
+    mov rcx, rdx
+    mov rdx, r8
+    sub rsp, 40
+    call string_equals
     add rsp, 40
     ret
 .key_ptr_eq:
@@ -547,8 +645,122 @@ map_free:
 
 map_to_string:
     # rcx=map*, rdx=AsmString* out
-    mov rcx, rdx
-    lea rdx, [rip + map_stub_str]
+    push rbx
+    push r12
+    push r13
+    push r14
+    sub rsp, 160
+    mov rbx, rcx
+    mov r14, rdx
+
+    lea rcx, [rsp + 32]
+    lea rdx, [rip + map_lbrace]
     call string_from_cstr
+    lea rcx, [rsp + 48]
+    lea rdx, [rip + map_sep]
+    call string_from_cstr
+    lea rcx, [rsp + 64]
+    lea rdx, [rip + map_eq]
+    call string_from_cstr
+    lea rcx, [rsp + 80]
+    lea rdx, [rip + map_rbrace]
+    call string_from_cstr
+
+    xor r12, r12
+    xor r13, r13
+.to_string_loop:
+    cmp r12, MAP_MAX_ENTRIES
+    jae .to_string_done
+    mov rcx, rbx
+    mov rdx, r12
+    lea r8, [rip + map_entry_buf]
+    call map_read_entry
+    test rax, rax
+    jz .to_string_next
+    lea r10, [rip + map_entry_buf]
+    cmp qword ptr [r10], 0
+    je .to_string_next
+
+    cmp r13, 0
+    je .to_string_key
+    lea rcx, [rsp + 96]
+    lea rdx, [rsp + 32]
+    lea r8, [rsp + 48]
+    call string_concat
+    lea rcx, [rsp + 32]
+    call string_free
+    lea rcx, [rsp + 32]
+    lea rdx, [rsp + 96]
+    call string_copy
+    lea rcx, [rsp + 96]
+    call string_free
+
+.to_string_key:
+    lea r10, [rip + map_entry_buf]
+    lea rcx, [rsp + 96]
+    lea rdx, [rsp + 32]
+    mov r8, [r10 + 8]
+    call string_concat
+    lea rcx, [rsp + 32]
+    call string_free
+    lea rcx, [rsp + 32]
+    lea rdx, [rsp + 96]
+    call string_copy
+    lea rcx, [rsp + 96]
+    call string_free
+
+    lea rcx, [rsp + 96]
+    lea rdx, [rsp + 32]
+    lea r8, [rsp + 64]
+    call string_concat
+    lea rcx, [rsp + 32]
+    call string_free
+    lea rcx, [rsp + 32]
+    lea rdx, [rsp + 96]
+    call string_copy
+    lea rcx, [rsp + 96]
+    call string_free
+
+    lea r10, [rip + map_entry_buf]
+    lea rcx, [rsp + 96]
+    lea rdx, [rsp + 32]
+    mov r8, [r10 + 16]
+    call string_concat
+    lea rcx, [rsp + 32]
+    call string_free
+    lea rcx, [rsp + 32]
+    lea rdx, [rsp + 96]
+    call string_copy
+    lea rcx, [rsp + 96]
+    call string_free
+
+    mov r13, 1
+.to_string_next:
+    inc r12
+    jmp .to_string_loop
+
+.to_string_done:
+    lea rcx, [rsp + 96]
+    lea rdx, [rsp + 32]
+    lea r8, [rsp + 80]
+    call string_concat
+    mov rcx, r14
+    lea rdx, [rsp + 96]
+    call string_copy
+    lea rcx, [rsp + 96]
+    call string_free
+    lea rcx, [rsp + 80]
+    call string_free
+    lea rcx, [rsp + 64]
+    call string_free
+    lea rcx, [rsp + 48]
+    call string_free
+    lea rcx, [rsp + 32]
+    call string_free
+    add rsp, 160
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
     mov rax, 1
     ret
