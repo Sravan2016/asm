@@ -10,69 +10,77 @@ ArraySample :: FileRead :: Map->
         arrS.contains("Hi");
         arrS.add("nj");
         Integer s = arrS.find("Hi");
-        Integer s = arrS.size();
+        println("s value: "+s);
+        Integer size = arrS.size();
+        println("size value: "+size);
         String getS = arrS.get(1);
         arrS.remove(1);
         String[] filterS = arrS.filter((value)=>{
             Boolean b = value.equals("Hi");
             return b;
         });
-       String s = arrS.join(",");
-       println(" String "+ s);
+       String join = arrS.join(",");
+       println(" String "+ join);
        String[] sortS = arrS.sort((a,b)=>{
-            Boolean b = a>b;
-            return b;
+            Boolean r = a>b;
+            return r;
        });
 
         arr.contains(10);
         arr.add(2);
-        Integer s = arr.find(2);
-        Integer s = arr.size();
+        Integer s1 = arr.find(2);
+        println("s value: "+s1);
+        Integer size1 = arr.size();
+        println("size value: "+size1);
         Integer getI = arr.get(1);
         arr.remove(1);
         Integer[] filterI = arr.filter((value)=>{
             Boolean b = value.equals(2);
             return b;
         } );
-       String s = arr.join(",");
-       println(" Integer "+ s);
+       String join1 = arr.join(",");
+       println(" Integer "+ join1);
        Integer[] sortI = arr.sort((a,b)=>{
-            Boolean b = a>b;
-            return b;
+            Boolean r = a>b;
+            return r;
        });
 
         arrL.contains(1l);
         arrL.add(2l);
-        Integer s = arrL.find(2l);
-        Integer s = arrL.size();
-        Long getS = arrL.get(1);
+        Integer s2 = arrL.find(2l);
+        println("s value: "+s2);
+        Integer size2 = arrL.size();
+        println("size value: "+size2);
+        Long getL = arrL.get(1);
         arrL.remove(1);
         Long[] filterL = arrL.filter((value)=>{
             Boolean b = value.equals(2l);
             return b;
         } );
-       String s = arrL.join(",");
-       println(" Long "+ s);
+       String join2 = arrL.join(",");
+       println(" Long "+ join2);
        Long[] sortL = arrL.sort((a,b)=>{
-            Boolean b = a>b;
-            return b;
+            Boolean r = a>b;
+            return r;
        });
 
         arrD.contains(1d);
         arrD.add(2d);
-        Integer s = arrD.find(2d);
-        Integer s = arrD.size();
+        Integer s3 = arrD.find(2d);
+        println("s value: "+s3);
+        Integer size3 = arrD.size();
+        println("size value: "+size3);
         Double getD = arrD.get(1);
         arrD.remove(1);
         Double[] filterD = arrD.filter((value)=>{
             Boolean b = value.equals(2d);
             return b;
         } );
-       String s = arrD.join(",");
-       println(" Double "+ s);
+       String join3 = arrD.join(",");
+       println(" Double "+ join3);
        Double[] sortD = arrD.sort((a,b)=>{
-            Boolean b = a>b;
-            return b;
+            Boolean r = a>b;
+            return r;
        });
        println(" Before MapFunction ");
         mapFunctions{};

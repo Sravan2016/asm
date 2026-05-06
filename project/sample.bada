@@ -2,7 +2,7 @@ from: com.base.ArraySample;
 Sample ->
     Integer a = 10;
     main{String[] args} -->
-      Integer a = 11;
+      a = 11;
       Integer b = 20;
       String s = "Hi";
       println("S value = "+ s +"\n");
@@ -31,10 +31,10 @@ Sample ->
       println("i value "+ i +"\n");
       ArraySample.createArray{};
     <--
-    loopFunctions{Integer i, Integer a} -->
-        println("a value "+a+" and i values "+i)
+    loopFunctions{Integer i, Integer m} -->
+        println("m value "+m+" and i values "+i)
       // while loop
-      while (a > i){
+      while (m > i){
         println(i +" from while in loopfunction\n");
         i++;
       }

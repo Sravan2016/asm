@@ -1008,9 +1008,12 @@ SemanticVariableSymbol* SemanticAnalyser::declareVariable(const std::string& nam
     if (!scopes_.empty()) {
         auto& current_scope = scopes_.back().variables;
         if (contains_key(current_scope, name)) {
-            SemanticVariableSymbol symbol{name, type, location, implicit};
-            current_scope[name] = std::move(symbol);
+            addError(location, "duplicate variable declaration '" + name + "'");
             return &current_scope[name];
+        }
+        if (current_class_ && contains_key(current_class_->fields, name)) {
+            addError(location, "variable declaration '" + name + "' conflicts with field declaration");
+            return &current_class_->fields[name];
         }
         SemanticVariableSymbol symbol{name, type, location, implicit};
         auto [it, inserted] = current_scope.emplace(name, std::move(symbol));
@@ -1019,8 +1022,7 @@ SemanticVariableSymbol* SemanticAnalyser::declareVariable(const std::string& nam
 
     if (!current_class_) return nullptr;
     if (contains_key(current_class_->fields, name)) {
-        SemanticVariableSymbol symbol{name, type, location, implicit};
-        current_class_->fields[name] = std::move(symbol);
+        addError(location, "duplicate field declaration '" + name + "'");
         return &current_class_->fields[name];
     }
     SemanticVariableSymbol symbol{name, type, location, implicit};
