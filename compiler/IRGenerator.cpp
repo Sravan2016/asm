@@ -267,10 +267,18 @@ IRModule IRGenerator::generate(const Program& program,
 
 void IRGenerator::visitClass(const ClassDecl& cls) {
     current_class_name_ = cls.name.lexeme;
+    class_field_stmts_.clear();
 
     std::vector<std::string> parents;
     for (const auto& parent : cls.parents) {
         parents.push_back(parent.lexeme);
+    }
+
+    for (const auto& member : cls.members) {
+        if (member.kind == ClassMember::Kind::Statement && member.statement &&
+            member.statement->kind == StmtKind::VariableDecl) {
+            class_field_stmts_.push_back(member.statement.get());
+        }
     }
 
     for (const auto& member : cls.members) {
@@ -342,6 +350,14 @@ void IRGenerator::visitMethod(const MethodDecl& method, const ClassDecl& cls, co
 
         // Store parameter value to alloca
         emit(IRInstruction::make_store(param.name, addr));
+    }
+
+    // Materialize class fields as method-scope storage so bare field references
+    // resolve consistently in methods even without an object layout.
+    for (const Stmt* field_stmt : class_field_stmts_) {
+        if (field_stmt && field_stmt->kind == StmtKind::VariableDecl) {
+            visitVariableDecl(static_cast<const VariableDeclStmt&>(*field_stmt));
+        }
     }
 
     // Alloca for local variables and visit body

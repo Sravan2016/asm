@@ -6,12 +6,10 @@
 .extern pSetFilePointerEx
 .extern pCloseHandle
 .extern pDeleteFileA
-.extern HeapAlloc
 .extern string_from_cstr
 .extern string_concat
 .extern string_copy
 .extern string_free
-.extern heap_handle
 
 .global map_init
 .global map_create
@@ -32,9 +30,9 @@
 .equ FILE_SHARE_READ, 1
 .equ CREATE_ALWAYS, 2
 .equ FILE_ATTRIBUTE_NORMAL, 0x00000080
+.equ OPEN_EXISTING, 3
 .equ FILE_BEGIN, 0
 .equ INVALID_HANDLE_VALUE, -1
-.equ HEAP_ZERO_MEMORY, 0x00000008
 .equ MAP_MAX_ENTRIES, 128
 .equ MAP_ENTRY_SIZE, 32
 
@@ -51,9 +49,9 @@ map_eq: .asciz "="
 .align 8
 map_pool:      .space 640       # 16 map structs * 40 bytes
 map_pool_next: .quad 0
-map_entry_pool: .space 65536    # 16 maps * 128 entries * 32 bytes
 map_entry_buf: .space 32
 map_entry_buf2: .space 32
+map_io_count:  .quad 0
 
 .section .text
 
@@ -150,53 +148,101 @@ map_string_equals:
     ret
 
 map_seek_entry:
-    # rcx=map*, rdx=index -> rax=entry*
-    mov rax, [rcx]
-    mov r10, rdx
-    shl r10, 5
-    add rax, r10
+    # rcx=map*, rdx=index -> rax=byte offset
+    mov rax, rdx
+    shl rax, 5
     ret
 
 map_read_entry:
     # rcx=map*, rdx=index, r8=buf -> rax=1/0
+    push rbx
+    push r12
+    push r13
     test rcx, rcx
     jz .read_fail
     cmp rdx, MAP_MAX_ENTRIES
     jae .read_fail
+    mov rbx, rcx
+    mov r12, r8
     call map_seek_entry
-    mov r10, [rax]
-    mov [r8], r10
-    mov r10, [rax + 8]
-    mov [r8 + 8], r10
-    mov r10, [rax + 16]
-    mov [r8 + 16], r10
-    mov r10, [rax + 24]
-    mov [r8 + 24], r10
+    mov r13, rax
+    mov rcx, [rbx]
+    mov rdx, r13
+    xor r8, r8
+    mov r9d, FILE_BEGIN
+    sub rsp, 32
+    call qword ptr [rip + pSetFilePointerEx]
+    add rsp, 32
+    test eax, eax
+    jz .read_fail
+    sub rsp, 48
+    lea r9, [rip + map_io_count]
+    mov rcx, [rbx]
+    mov rdx, r12
+    mov r8d, MAP_ENTRY_SIZE
+    mov qword ptr [rsp + 32], 0
+    call qword ptr [rip + pReadFile]
+    add rsp, 48
+    test eax, eax
+    jz .read_fail
+    cmp qword ptr [rip + map_io_count], MAP_ENTRY_SIZE
+    jne .read_fail
     mov rax, 1
+    pop r13
+    pop r12
+    pop rbx
     ret
 .read_fail:
     xor rax, rax
+    pop r13
+    pop r12
+    pop rbx
     ret
 
 map_write_entry:
     # rcx=map*, rdx=index, r8=buf -> rax=1/0
+    push rbx
+    push r12
+    push r13
     test rcx, rcx
     jz .write_fail
     cmp rdx, MAP_MAX_ENTRIES
     jae .write_fail
+    mov rbx, rcx
+    mov r12, r8
     call map_seek_entry
-    mov r10, [r8]
-    mov [rax], r10
-    mov r10, [r8 + 8]
-    mov [rax + 8], r10
-    mov r10, [r8 + 16]
-    mov [rax + 16], r10
-    mov r10, [r8 + 24]
-    mov [rax + 24], r10
+    mov r13, rax
+    mov rcx, [rbx]
+    mov rdx, r13
+    xor r8, r8
+    mov r9d, FILE_BEGIN
+    sub rsp, 32
+    call qword ptr [rip + pSetFilePointerEx]
+    add rsp, 32
+    test eax, eax
+    jz .write_fail
+    sub rsp, 48
+    lea r9, [rip + map_io_count]
+    mov rcx, [rbx]
+    mov rdx, r12
+    mov r8d, MAP_ENTRY_SIZE
+    mov qword ptr [rsp + 32], 0
+    call qword ptr [rip + pWriteFile]
+    add rsp, 48
+    test eax, eax
+    jz .write_fail
+    cmp qword ptr [rip + map_io_count], MAP_ENTRY_SIZE
+    jne .write_fail
     mov rax, 1
+    pop r13
+    pop r12
+    pop rbx
     ret
 .write_fail:
     xor rax, rax
+    pop r13
+    pop r12
+    pop rbx
     ret
 
 map_hash_key:
@@ -316,7 +362,8 @@ map_create:
     push rbx
     push r12
     push r13
-    sub rsp, 8
+    push r14
+    sub rsp, 72
     mov rbx, rcx
     mov r12, rdx
     mov r13, r8
@@ -329,32 +376,45 @@ map_create:
     imul r8, r8, 40
     lea rax, [rip + map_pool]
     add rax, r8
-    mov r10, r9
-    imul r10, r10, 4096
-    lea r11, [rip + map_entry_pool]
-    add r11, r10
-    mov qword ptr [rax], r11
-    mov qword ptr [rax + 8], 0
-    mov qword ptr [rax + 16], 0
-    mov qword ptr [rax + 24], 0
-    mov qword ptr [rax + 32], 0
-    mov rcx, rax
+    mov r14, rax
+    lea rdx, [rsp]
+    mov rcx, r14
+    call map_make_path
+    mov rcx, rdx
+    mov rdx, GENERIC_READ
+    or rdx, GENERIC_WRITE
+    mov r8, FILE_SHARE_READ
+    xor r9, r9
+    mov qword ptr [rsp + 32], CREATE_ALWAYS
+    mov qword ptr [rsp + 40], FILE_ATTRIBUTE_NORMAL
+    mov qword ptr [rsp + 48], 0
+    call qword ptr [rip + pCreateFileA]
+    cmp rax, INVALID_HANDLE_VALUE
+    je .create_fail
+    mov qword ptr [r14], rax
+    mov qword ptr [r14 + 8], 0
+    mov qword ptr [r14 + 16], 0
+    mov qword ptr [r14 + 24], 0
+    mov qword ptr [r14 + 32], 0
+    mov rcx, r14
     mov rdx, rbx
     mov r8, r12
     mov r9, r13
-    mov rbx, rax
+    mov rbx, r14
     sub rsp, 40
     call map_init
     add rsp, 40
     mov rax, rbx
-    add rsp, 8
+    add rsp, 72
+    pop r14
     pop r13
     pop r12
     pop rbx
     ret
 .create_fail:
     xor rax, rax
-    add rsp, 8
+    add rsp, 72
+    pop r14
     pop r13
     pop r12
     pop rbx
@@ -617,14 +677,30 @@ map_clear:
 
 map_free:
     # rcx=map*
+    push rbx
+    sub rsp, 72
     test rcx, rcx
     jz .free_done
-    mov qword ptr [rcx], 0
-    mov qword ptr [rcx + 8], 0
-    mov qword ptr [rcx + 16], 0
-    mov qword ptr [rcx + 24], 0
-    mov qword ptr [rcx + 32], 0
+    mov rbx, rcx
+    mov rcx, [rbx]
+    test rcx, rcx
+    jz .free_delete
+    sub rsp, 32
+    call qword ptr [rip + pCloseHandle]
+    add rsp, 32
+.free_delete:
+    lea rdx, [rsp + 32]
+    mov rcx, rbx
+    call map_make_path
+    lea rcx, [rsp + 32]
+    call qword ptr [rip + pDeleteFileA]
+    mov qword ptr [rbx], 0
+    mov qword ptr [rbx + 8], 0
+    mov qword ptr [rbx + 16], 0
+    mov qword ptr [rbx + 24], 0
+    mov qword ptr [rbx + 32], 0
     lea rax, [rip + map_pool]
+    mov rcx, rbx
     cmp rcx, rax
     jb .free_done
     lea rdx, [rip + map_pool + 640]
@@ -641,6 +717,8 @@ map_free:
     jne .free_done
     dec qword ptr [rdx]
 .free_done:
+    add rsp, 72
+    pop rbx
     ret
 
 map_to_string:

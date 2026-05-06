@@ -30,6 +30,17 @@ Sample ->
       Integer i = loopFunctions{0, 15};
       println("i value "+ i +"\n");
       ArraySample.createArray{};
+        Map m=Map.of("key1","value1","key2","value2");
+        m.put("key3","value3");
+        String value = m.get("key3");
+        println("value is : "+value)
+        m.containsKey("key3");
+        m.remove("key1");
+        m.size();
+        m.isEmpty();
+        println("printing all m values: "+ m.toString());
+        m.clear();
+        println(m.toString());
     <--
     loopFunctions{Integer i, Integer m} -->
         println("m value "+m+" and i values "+i)
@@ -43,7 +54,6 @@ Sample ->
         case 11: {
            println("from switch in loopfunction values of i: "+ i +"\n");
            }
-
       }
     [i]<--
 <-
