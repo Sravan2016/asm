@@ -360,10 +360,8 @@ void IRGenerator::visitMethod(const MethodDecl& method, const ClassDecl& cls, co
         }
     }
 
-    // Alloca for local variables and visit body
-    for (const auto& stmt : method.body) {
-        if (stmt) visitStatement(*stmt);
-    }
+    // Emit method body strictly in source order.
+    visitStatementSequence(method.body);
 
     func = module_.find_function(func_name);
 
@@ -392,6 +390,12 @@ void IRGenerator::visitMethod(const MethodDecl& method, const ClassDecl& cls, co
     scope_stack_.clear();
     owned_values_.clear();
     value_aliases_.clear();
+}
+
+void IRGenerator::visitStatementSequence(const std::vector<std::unique_ptr<Stmt>>& statements) {
+    for (const auto& stmt : statements) {
+        if (stmt) visitStatement(*stmt);
+    }
 }
 
 void IRGenerator::visitStatement(const Stmt& stmt) {
@@ -551,9 +555,7 @@ void IRGenerator::visitGuardBlock(const GuardBlockStmt& stmt) {
     current_function_->set_current_block(current_function_->blocks.size() - 1);
     push_scope();
 
-    for (const auto& body_stmt : stmt.body) {
-        if (body_stmt) visitStatement(*body_stmt);
-    }
+    visitStatementSequence(stmt.body);
     pop_scope();
 
     if (current_function_->current_block() && !current_function_->current_block()->is_terminated()) {
@@ -568,9 +570,7 @@ void IRGenerator::visitGuardBlock(const GuardBlockStmt& stmt) {
         current_function_->add_block(else_label);
         current_function_->set_current_block(current_function_->blocks.size() - 1);
         push_scope();
-        for (const auto& body_stmt : stmt.elseBody) {
-            if (body_stmt) visitStatement(*body_stmt);
-        }
+        visitStatementSequence(stmt.elseBody);
         pop_scope();
 
         if (current_function_->current_block() && !current_function_->current_block()->is_terminated()) {
@@ -611,9 +611,7 @@ void IRGenerator::visitWhileBlock(const GuardBlockStmt& stmt) {
     current_function_->set_current_block(current_function_->blocks.size() - 1);
     push_scope();
 
-    for (const auto& body_stmt : stmt.body) {
-        if (body_stmt) visitStatement(*body_stmt);
-    }
+    visitStatementSequence(stmt.body);
     pop_scope();
 
     if (current_function_->current_block() && !current_function_->current_block()->is_terminated()) {
@@ -713,9 +711,7 @@ void IRGenerator::visitForEach(const ForEachStmt& stmt) {
     push_scope();
     assign_owned_value(var_addr, elem, loop_type);
 
-    for (const auto& body_stmt : stmt.body) {
-        if (body_stmt) visitStatement(*body_stmt);
-    }
+    visitStatementSequence(stmt.body);
     pop_scope();
 
     if (had_saved_symbol) {
@@ -791,9 +787,7 @@ void IRGenerator::visitSwitch(const SwitchStmt& stmt) {
         current_function_->set_current_block(current_function_->blocks.size() - 1);
         push_scope();
 
-        for (const auto& body_stmt : switch_case.body) {
-            if (body_stmt) visitStatement(*body_stmt);
-        }
+        visitStatementSequence(switch_case.body);
         pop_scope();
 
         if (current_function_->current_block() && !current_function_->current_block()->is_terminated()) {
@@ -857,6 +851,8 @@ std::string IRGenerator::visitExpression(const Expr& expr) {
             return visitPostfix(static_cast<const PostfixExpr&>(expr));
         case ExprKind::Assignment:
             return visitAssignment(static_cast<const AssignmentExpr&>(expr));
+        case ExprKind::Conditional:
+            return visitConditional(static_cast<const ConditionalExpr&>(expr));
         case ExprKind::Call:
             return visitCall(static_cast<const CallExpr&>(expr));
         case ExprKind::Member:
@@ -1107,9 +1103,115 @@ std::string IRGenerator::visitAssignment(const AssignmentExpr& expr) {
     return val;
 }
 
+std::string IRGenerator::visitConditional(const ConditionalExpr& expr) {
+    std::string then_label = new_label();
+    std::string else_label = new_label();
+    std::string end_label = new_label();
+
+    IRType result_type = get_expr_type(expr);
+    const bool has_value_result = result_type.kind != IRTypeKind::Void;
+    std::string result_slot;
+    if (has_value_result) {
+        result_slot = new_temporary();
+        emit(IRInstruction::make_alloca(result_slot, result_type));
+    }
+
+    std::string cond = visitExpression(*expr.condition);
+    IRInstruction branch;
+    branch.opcode = IROpcode::Branch;
+    branch.type = IRType::makeVoid();
+    branch.operands = {cond, then_label, else_label};
+    emit(branch);
+
+    current_function_->add_block(then_label);
+    current_function_->set_current_block(current_function_->blocks.size() - 1);
+    if (!has_value_result) push_scope();
+    std::string then_value = expr.thenBranch ? visitExpression(*expr.thenBranch) : std::string{};
+    if (has_value_result) {
+        emit(IRInstruction::make_store(then_value, result_slot));
+        assign_owned_value(result_slot, then_value, result_type);
+    } else {
+        pop_scope();
+    }
+    if (current_function_->current_block() && !current_function_->current_block()->is_terminated()) {
+        IRInstruction then_jmp;
+        then_jmp.opcode = IROpcode::Jmp;
+        then_jmp.type = IRType::makeVoid();
+        then_jmp.label_name = end_label;
+        emit(then_jmp);
+    }
+
+    current_function_->add_block(else_label);
+    current_function_->set_current_block(current_function_->blocks.size() - 1);
+    if (!has_value_result) push_scope();
+    std::string else_value = expr.elseBranch ? visitExpression(*expr.elseBranch) : std::string{};
+    if (has_value_result) {
+        emit(IRInstruction::make_store(else_value, result_slot));
+        assign_owned_value(result_slot, else_value, result_type);
+    } else {
+        pop_scope();
+    }
+    if (current_function_->current_block() && !current_function_->current_block()->is_terminated()) {
+        IRInstruction else_jmp;
+        else_jmp.opcode = IROpcode::Jmp;
+        else_jmp.type = IRType::makeVoid();
+        else_jmp.label_name = end_label;
+        emit(else_jmp);
+    }
+
+    current_function_->add_block(end_label);
+    current_function_->set_current_block(current_function_->blocks.size() - 1);
+
+    if (!has_value_result) return new_temporary();
+
+    std::string result = new_temporary();
+    emit(IRInstruction::make_load(result, result_slot, result_type));
+    value_aliases_[result] = result_slot;
+    return result;
+}
+
 std::string IRGenerator::visitCall(const CallExpr& expr) {
     if (const auto* ident = dynamic_cast<const IdentifierExpr*>(expr.callee.get())) {
         std::string func_name = ident->name;
+
+        if (func_name == "print" || func_name == "println") {
+            if (!expr.arguments.empty()) {
+                IRType type = get_expr_type(*expr.arguments[0]);
+                std::string val = visitExpression(*expr.arguments[0]);
+                std::string runtime_func = (type.kind == IRTypeKind::String || type.kind == IRTypeKind::Pointer)
+                    ? "print_string" : "print_uint";
+                module_.add_external_symbol(runtime_func);
+
+                IRInstruction call;
+                call.opcode = IROpcode::CallRuntime;
+                call.type = IRType::makeVoid();
+                call.operands = {runtime_func, val};
+                emit(call);
+            }
+
+            if (func_name == "println") {
+                std::string nl_name = "str_" + std::to_string(string_constants_.size());
+                std::string nl_value = "\n";
+                string_constants_[nl_name] = nl_value;
+                module_.add_string_constant(nl_name, nl_value);
+
+                std::string nl_val = new_temporary();
+                IRInstruction nl_inst;
+                nl_inst.opcode = IROpcode::ConstPtr;
+                nl_inst.type = IRType::makeString();
+                nl_inst.result = nl_val;
+                nl_inst.string_value = nl_name;
+                emit(nl_inst);
+
+                IRInstruction nl_call;
+                nl_call.opcode = IROpcode::CallRuntime;
+                nl_call.type = IRType::makeVoid();
+                nl_call.operands = {"print_string", nl_val};
+                emit(nl_call);
+            }
+
+            return new_temporary();
+        }
 
         std::vector<std::string> args;
         std::string owner_class =
@@ -1463,6 +1565,70 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
         }
 
         if (object_type.kind == IRTypeKind::String) {
+            if (member->member.lexeme == "concat" && expr.arguments.size() == 1) {
+                std::string out_slot = new_temporary();
+                emit(IRInstruction::make_alloca(out_slot, IRType::makeString()));
+                module_.add_external_symbol("string_concat");
+                IRInstruction call;
+                call.opcode = IROpcode::CallRuntime;
+                call.type = IRType::makeVoid();
+                call.operands = {"string_concat", "&" + out_slot, object_value, args[1]};
+                emit(call);
+                register_owned_value(out_slot, "string_free", CleanupOperandKind::PassAddress);
+                return "&" + out_slot;
+            }
+
+            if (member->member.lexeme == "split" && expr.arguments.size() == 1) {
+                std::string first_slot = new_temporary();
+                emit(IRInstruction::make_alloca(first_slot, IRType::makeString()));
+                std::string second_slot = new_temporary();
+                emit(IRInstruction::make_alloca(second_slot, IRType::makeString()));
+
+                module_.add_external_symbol("string_before_token");
+                IRInstruction before_call;
+                before_call.opcode = IROpcode::CallRuntime;
+                before_call.type = IRType::makeVoid();
+                before_call.operands = {"string_before_token", "&" + first_slot, object_value, args[1]};
+                emit(before_call);
+
+                module_.add_external_symbol("string_after_token");
+                IRInstruction after_call;
+                after_call.opcode = IROpcode::CallRuntime;
+                after_call.type = IRType::makeVoid();
+                after_call.operands = {"string_after_token", "&" + second_slot, object_value, args[1]};
+                emit(after_call);
+
+                register_owned_value(first_slot, "string_free", CleanupOperandKind::PassAddress);
+                register_owned_value(second_slot, "string_free", CleanupOperandKind::PassAddress);
+
+                std::string capacity_val = new_temporary();
+                emit(IRInstruction::make_const_int(capacity_val, 2));
+
+                std::string array_temp = new_temporary();
+                IRInstruction arr_new;
+                arr_new.opcode = IROpcode::ArrayNew;
+                arr_new.type = IRType::makeArray(IRType::makePointer());
+                arr_new.result = array_temp;
+                arr_new.operands = {capacity_val};
+                emit(arr_new);
+                module_.add_external_symbol("array_create");
+                register_owned_value(array_temp, "array_free", CleanupOperandKind::DirectValue);
+
+                IRInstruction first_push;
+                first_push.opcode = IROpcode::ArrayPush;
+                first_push.type = IRType::makeVoid();
+                first_push.operands = {array_temp, "&" + first_slot};
+                emit(first_push);
+
+                IRInstruction second_push;
+                second_push.opcode = IROpcode::ArrayPush;
+                second_push.type = IRType::makeVoid();
+                second_push.operands = {array_temp, "&" + second_slot};
+                emit(second_push);
+
+                return array_temp;
+            }
+
             if (object_type.is_file_backed) {
                 if (member->member.lexeme == "length") runtime_name = "filestring_length";
                 else if (member->member.lexeme == "atIndex") runtime_name = "filestring_char_at";
@@ -1557,6 +1723,7 @@ std::string IRGenerator::visitMember(const MemberExpr& expr) {
         expr.member.lexeme == "sort" || expr.member.lexeme == "equals" ||
         expr.member.lexeme == "equalsIcase" || expr.member.lexeme == "containString" ||
         expr.member.lexeme == "atIndex" || expr.member.lexeme == "replaceAt" ||
+        expr.member.lexeme == "concat" || expr.member.lexeme == "split" ||
         expr.member.lexeme == "length") {
         // This will be handled by the parent call
         dest = obj;

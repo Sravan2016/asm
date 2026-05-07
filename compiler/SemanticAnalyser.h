@@ -89,6 +89,7 @@ private:
     SemanticType analyseCallExpr(const CallExpr& expr);
     SemanticType analyseMemberExpr(const MemberExpr& expr);
     SemanticType analyseAssignmentExpr(const AssignmentExpr& expr);
+    SemanticType analyseConditionalExpr(const ConditionalExpr& expr);
     SemanticType analyseBinaryExpr(const BinaryExpr& expr);
     SemanticType analyseUnaryExpr(const UnaryExpr& expr);
     SemanticType analysePostfixExpr(const PostfixExpr& expr);

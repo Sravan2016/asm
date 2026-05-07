@@ -474,9 +474,17 @@ std::unique_ptr<Stmt> Parser::parseIfStmt() {
     if (!stmt->body.empty()) stmt->end = stmt->body.back()->end;
 
     if (match(TokenKind::KeywordElse)) {
-        consume(TokenKind::LeftBrace, "expected '{' to start else block");
-        stmt->elseBody = parseBraceBody();
-        if (!stmt->elseBody.empty()) stmt->end = stmt->elseBody.back()->end;
+        if (check(TokenKind::KeywordIf)) {
+            auto else_if = parseIfStmt();
+            if (else_if) {
+                stmt->end = else_if->end;
+                stmt->elseBody.push_back(std::move(else_if));
+            }
+        } else {
+            consume(TokenKind::LeftBrace, "expected '{' to start else block");
+            stmt->elseBody = parseBraceBody();
+            if (!stmt->elseBody.empty()) stmt->end = stmt->elseBody.back()->end;
+        }
     }
 
     return stmt;
@@ -689,11 +697,24 @@ std::unique_ptr<Expr> Parser::parseExpression() {
 }
 
 std::unique_ptr<Expr> Parser::parseAssignment() {
-    auto expr = parseLogicalOr();
+    auto expr = parseConditional();
     if (match(TokenKind::Assign)) {
         Token op = previous();
         auto value = parseAssignment();
         return std::make_unique<AssignmentExpr>(std::move(expr), std::move(op), std::move(value));
+    }
+    return expr;
+}
+
+std::unique_ptr<Expr> Parser::parseConditional() {
+    auto expr = parseLogicalOr();
+    if (match(TokenKind::Question)) {
+        Token question = previous();
+        auto then_branch = parseExpression();
+        consume(TokenKind::Colon, "expected ':' in conditional expression");
+        auto else_branch = parseConditional();
+        return std::make_unique<ConditionalExpr>(
+            std::move(expr), std::move(question), std::move(then_branch), std::move(else_branch));
     }
     return expr;
 }
@@ -818,6 +839,9 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
 
 std::unique_ptr<Expr> Parser::parsePrimary() {
     if (match(TokenKind::Identifier)) {
+        return std::make_unique<IdentifierExpr>(previous().lexeme, previous().start, previous().end);
+    }
+    if (matchAny({TokenKind::KeywordPrint, TokenKind::KeywordPrintln})) {
         return std::make_unique<IdentifierExpr>(previous().lexeme, previous().start, previous().end);
     }
     if (match(TokenKind::IntegerLiteral)) {

@@ -4,8 +4,11 @@ Sample ->
     main{String[] args} -->
       a = 11;
       Integer b = 20;
-      String s = "Hi";
+      String s = "Hi this is sravan.";
+      s = s.concat(" i am software develper");
       println("S value = "+ s +"\n");
+      String[] split = s.split(".");
+      println(split[0]+ " "+split[1]);
       println("a + b = " + (a + b) +"\n");
       println("a - b = " + (a - b) +"\n");
       println("a * b = " + (a * b) +"\n");
@@ -23,24 +26,27 @@ Sample ->
           println(i + " from While loop\n");
           i++;
         }
-        if (i == 11) {
-          println("i from if loop " + i + "\n");
-        }
+       if(i == 11){
+         println("i from if loop " + i + "\n");
+       } else if(i == 20){
+         println("i from if loop " + i + "\n");
+       } else if(i == 30){
+         println("i from if loop " + i + "\n");
+       } else if(i == 40){
+         println("i from if loop " + i + "\n");
+       } else {
+         println("i from if loop " + i + "\n");
+       }
+        i == 11 ? println("i from if loop " + i + "\n")
+        : i == 20 ? println("i from if loop " + i + "\n")
+        : i == 30 ? println("i from if loop " + i + "\n")
+        : i == 40 ? println("i from if loop " + i + "\n")
+        : println("i from if loop " + i + "\n");
       }
-      Integer i = loopFunctions{0, 15};
-      println("i value "+ i +"\n");
-      ArraySample.createArray{};
-        Map m=Map.of("key1","value1","key2","value2");
-        m.put("key3","value3");
-        String value = m.get("key3");
-        println("value is : "+value)
-        m.containsKey("key3");
-        m.remove("key1");
-        m.size();
-        m.isEmpty();
-        println("printing all m values: "+ m.toString());
-        m.clear();
-        println(m.toString());
+      //Integer i = loopFunctions{0, 15};
+      //println("i value "+ i +"\n");
+      //ArraySample.createArray{};
+
     <--
     loopFunctions{Integer i, Integer m} -->
         println("m value "+m+" and i values "+i)

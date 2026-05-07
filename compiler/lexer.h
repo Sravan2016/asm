@@ -65,6 +65,7 @@ enum class TokenKind {
     GreaterEqual,
     AndAnd,
     OrOr,
+    Question,
     Comma,
     Colon,
     Semicolon,

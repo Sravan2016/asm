@@ -387,6 +387,8 @@ SemanticType SemanticAnalyser::analyseExpr(const Expr& expr) {
             return analyseBinaryExpr(static_cast<const BinaryExpr&>(expr));
         case ExprKind::Assignment:
             return analyseAssignmentExpr(static_cast<const AssignmentExpr&>(expr));
+        case ExprKind::Conditional:
+            return analyseConditionalExpr(static_cast<const ConditionalExpr&>(expr));
         case ExprKind::Call:
             return analyseCallExpr(static_cast<const CallExpr&>(expr));
         case ExprKind::Member:
@@ -444,6 +446,14 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
     const SemanticMethodSymbol* method_symbol = nullptr;
 
     if (const auto* ident = dynamic_cast<const IdentifierExpr*>(expr.callee.get())) {
+        if (ident->name == "print" || ident->name == "println") {
+            for (const auto& arg : expr.arguments) {
+                if (arg) analyseExpr(*arg);
+            }
+            const SemanticType result = SemanticType::makeVoid();
+            rememberExprType(expr, result);
+            return result;
+        }
         method_symbol = lookupCurrentClassMethod(ident->name);
         if (!method_symbol) {
             if (current_class_) {
@@ -550,6 +560,10 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
                     result_type = SemanticType::makeInteger();
                 } else if (method == "length") {
                     result_type = SemanticType::makeInteger();
+                } else if (method == "concat") {
+                    result_type = SemanticType::makeString(object_type.is_file_backed);
+                } else if (method == "split") {
+                    result_type = SemanticType::makeArray(SemanticType::makeString());
                 } else if (object_type.is_file_backed && method == "replaceAt") {
                     result_type = SemanticType::makeBoolean();
                 }
@@ -664,6 +678,40 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
     return method_symbol->return_type;
 }
 
+SemanticType SemanticAnalyser::analyseConditionalExpr(const ConditionalExpr& expr) {
+    const SemanticType cond_type = expr.condition ? analyseExpr(*expr.condition) : SemanticType::makeError();
+    if (!isBoolean(cond_type) && cond_type.kind != SemanticTypeKind::Error &&
+        cond_type.kind != SemanticTypeKind::Unknown) {
+        addError(expr.condition ? expr.condition->start : expr.start,
+                 "conditional condition must be Boolean, got " + describeType(cond_type));
+    }
+
+    const SemanticType then_type = expr.thenBranch ? analyseExpr(*expr.thenBranch) : SemanticType::makeError();
+    const SemanticType else_type = expr.elseBranch ? analyseExpr(*expr.elseBranch) : SemanticType::makeError();
+
+    SemanticType result = SemanticType::makeError();
+    if (areTypesEqual(then_type, else_type)) {
+        result = then_type;
+    } else if (isAssignable(then_type, else_type)) {
+        result = then_type;
+    } else if (isAssignable(else_type, then_type)) {
+        result = else_type;
+    } else if (then_type.kind == SemanticTypeKind::Error || else_type.kind == SemanticTypeKind::Error) {
+        result = SemanticType::makeError();
+    } else if (then_type.kind == SemanticTypeKind::Unknown) {
+        result = else_type;
+    } else if (else_type.kind == SemanticTypeKind::Unknown) {
+        result = then_type;
+    } else {
+        addError(expr.start, "conditional branches must have compatible types, got " +
+                                 describeType(then_type) + " and " + describeType(else_type));
+        result = SemanticType::makeError();
+    }
+
+    rememberExprType(expr, result);
+    return result;
+}
+
 SemanticType SemanticAnalyser::analyseMemberExpr(const MemberExpr& expr) {
     if (const auto* object_ident = dynamic_cast<const IdentifierExpr*>(expr.object.get())) {
         if (lookupClass(object_ident->name)) {
@@ -753,7 +801,8 @@ SemanticType SemanticAnalyser::analyseMemberExpr(const MemberExpr& expr) {
             return result_type;
         }
         if (method == "equals" || method == "equalsIcase" || method == "containString" ||
-            method == "atIndex" || (object_type.is_file_backed && method == "replaceAt")) {
+            method == "atIndex" || method == "concat" || method == "split" ||
+            (object_type.is_file_backed && method == "replaceAt")) {
             const SemanticType type = SemanticType::makeUnknown();
             rememberExprType(expr, type);
             return type;

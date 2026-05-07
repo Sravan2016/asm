@@ -75,6 +75,8 @@ Token Lexer::nextToken() {
         case '|':
             if (match('|')) return makeToken(TokenKind::OrOr, startPos, start);
             return makeInvalidToken(startPos, start, "unexpected character '|'");
+        case '?':
+            return makeToken(TokenKind::Question, startPos, start);
         case '(':
             return makeToken(TokenKind::LeftParen, startPos, start);
         case ')':
@@ -374,6 +376,7 @@ const char* token_kind_name(TokenKind kind) {
         case TokenKind::GreaterEqual: return "GreaterEqual";
         case TokenKind::AndAnd: return "AndAnd";
         case TokenKind::OrOr: return "OrOr";
+        case TokenKind::Question: return "Question";
         case TokenKind::Comma: return "Comma";
         case TokenKind::Colon: return "Colon";
         case TokenKind::Semicolon: return "Semicolon";

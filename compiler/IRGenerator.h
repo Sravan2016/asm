@@ -21,6 +21,7 @@ private:
     void visitMethod(const MethodDecl& method, const ClassDecl& cls, const std::vector<std::string>& parents);
 
     // Statement visitation
+    void visitStatementSequence(const std::vector<std::unique_ptr<Stmt>>& statements);
     void visitStatement(const Stmt& stmt);
     void visitVariableDecl(const VariableDeclStmt& stmt);
     void visitExpressionStmt(const ExprStmt& stmt);
@@ -39,6 +40,7 @@ private:
     std::string visitUnary(const UnaryExpr& expr);
     std::string visitPostfix(const PostfixExpr& expr);
     std::string visitAssignment(const AssignmentExpr& expr);
+    std::string visitConditional(const ConditionalExpr& expr);
     std::string visitCall(const CallExpr& expr);
     std::string visitMember(const MemberExpr& expr);
     std::string visitIndex(const IndexExpr& expr);

@@ -35,6 +35,7 @@ enum class ExprKind {
     Postfix,
     Grouping,
     ArrayLiteral,
+    Conditional,
     Lambda
 };
 
@@ -148,6 +149,24 @@ struct ArrayLiteralExpr final : Expr {
     ArrayLiteralExpr(SourceLocation startValue = {}, SourceLocation endValue = {})
         : Expr(ExprKind::ArrayLiteral, startValue, endValue) {}
     std::vector<std::unique_ptr<Expr>> elements;
+};
+
+struct ConditionalExpr final : Expr {
+    ConditionalExpr(std::unique_ptr<Expr> conditionValue,
+                    Token questionValue,
+                    std::unique_ptr<Expr> thenBranchValue,
+                    std::unique_ptr<Expr> elseBranchValue)
+        : Expr(ExprKind::Conditional,
+               conditionValue ? conditionValue->start : questionValue.start,
+               elseBranchValue ? elseBranchValue->end : questionValue.end),
+          condition(std::move(conditionValue)),
+          question(std::move(questionValue)),
+          thenBranch(std::move(thenBranchValue)),
+          elseBranch(std::move(elseBranchValue)) {}
+    std::unique_ptr<Expr> condition;
+    Token question;
+    std::unique_ptr<Expr> thenBranch;
+    std::unique_ptr<Expr> elseBranch;
 };
 
 enum class StmtKind {
@@ -351,6 +370,7 @@ private:
 
     std::unique_ptr<Expr> parseExpression();
     std::unique_ptr<Expr> parseAssignment();
+    std::unique_ptr<Expr> parseConditional();
     std::unique_ptr<Expr> parseLogicalOr();
     std::unique_ptr<Expr> parseLogicalAnd();
     std::unique_ptr<Expr> parseEquality();
