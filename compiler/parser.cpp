@@ -697,6 +697,7 @@ std::unique_ptr<Expr> Parser::parseExpression() {
 }
 
 std::unique_ptr<Expr> Parser::parseAssignment() {
+    // Keep ternary parsing separate from statement-level if/else parsing.
     auto expr = parseConditional();
     if (match(TokenKind::Assign)) {
         Token op = previous();
@@ -707,6 +708,7 @@ std::unique_ptr<Expr> Parser::parseAssignment() {
 }
 
 std::unique_ptr<Expr> Parser::parseConditional() {
+    // Ternary conditional expression: cond ? thenExpr : elseExpr
     auto expr = parseLogicalOr();
     if (match(TokenKind::Question)) {
         Token question = previous();

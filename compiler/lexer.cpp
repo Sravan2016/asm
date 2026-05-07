@@ -75,6 +75,7 @@ Token Lexer::nextToken() {
         case '|':
             if (match('|')) return makeToken(TokenKind::OrOr, startPos, start);
             return makeInvalidToken(startPos, start, "unexpected character '|'");
+        // Ternary conditional operator is tokenized as punctuation, not a keyword.
         case '?':
             return makeToken(TokenKind::Question, startPos, start);
         case '(':
@@ -287,6 +288,8 @@ bool Lexer::isIdentifierPart(char c) {
 }
 
 TokenKind Lexer::keywordKind(const std::string& text) {
+    // Word-based control flow stays here. Operator-based ternary uses '?' and ':'
+    // tokens and is handled separately by the parser/code generator.
     if (text == "class") return TokenKind::KeywordClass;
     if (text == "inheritence") return TokenKind::KeywordInheritance;
     if (text == "methodcall") return TokenKind::KeywordMethodCall;

@@ -1104,6 +1104,8 @@ std::string IRGenerator::visitAssignment(const AssignmentExpr& expr) {
 }
 
 std::string IRGenerator::visitConditional(const ConditionalExpr& expr) {
+    // Ternary conditionals are lowered independently from statement-level
+    // if/else blocks. Source order is preserved by statement visitation.
     std::string then_label = new_label();
     std::string else_label = new_label();
     std::string end_label = new_label();
