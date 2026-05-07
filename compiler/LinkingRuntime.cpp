@@ -599,7 +599,10 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
                         emit_move_to_reg_sysv(inst.operands[0], "rdx", IRType::makeLong(), out);
                     }
                     out << "    lea rcx, [rbp" << temp_op0_offset << "]\n";
-                    out << "    call fromInteger\n";
+                    const auto it0_type = var_map_.find(inst.operands[0]);
+                    const bool op0_is_long =
+                        it0_type != var_map_.end() && it0_type->second.type.kind == IRTypeKind::Long;
+                    out << "    call " << (op0_is_long ? "fromLong" : "fromInteger") << "\n";
                 }
 
                 if (op1_needs_convert) {
@@ -616,7 +619,10 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
                         emit_move_to_reg_sysv(inst.operands[1], "rdx", IRType::makeLong(), out);
                     }
                     out << "    lea rcx, [rbp" << temp_op1_offset << "]\n";
-                    out << "    call fromInteger\n";
+                    const auto it1_type = var_map_.find(inst.operands[1]);
+                    const bool op1_is_long =
+                        it1_type != var_map_.end() && it1_type->second.type.kind == IRTypeKind::Long;
+                    out << "    call " << (op1_is_long ? "fromLong" : "fromInteger") << "\n";
                 }
 
                 // Call string_concat with proper args

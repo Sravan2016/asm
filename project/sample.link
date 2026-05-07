@@ -1,1 +1,1 @@
-"..\build\asm_file_obj\aleka.obj" "..\project\com\base\FileRead.obj" "..\project\com\base\Map.obj" "..\project\com\base\ArraySample.obj" "..\project\User.obj" "..\project\Users.obj" "..\project\Usersss.obj" "..\project\Userss.obj"
+"..\project\com\base\FileRead.obj" ".\build\asm_file_obj\aleka.obj" "..\project\com\base\Map.obj" "..\project\com\base\ArraySample.obj" "..\project\User.obj" "..\project\Users.obj" "..\project\Usersss.obj" "..\project\Userss.obj"

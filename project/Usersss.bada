@@ -3,5 +3,5 @@ Usersss:: Aleka ->
     String userName;
     String mailId;
     String password;
-    Integer phoneNumber;
+    Long phoneNumber;
 <-
