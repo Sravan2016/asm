@@ -1,5 +1,6 @@
 #include "IRGenerator.h"
 
+#include <cctype>
 #include <functional>
 #include <sstream>
 #include <unordered_set>
@@ -69,6 +70,20 @@ bool is_builtin_map_type(const SemanticType& type) {
 
 bool is_builtin_file_type(const SemanticType& type) {
     return type.kind == SemanticTypeKind::Class && type.name == "File";
+}
+
+bool has_parent_name(const ClassDecl& cls, const std::string& parent_name) {
+    for (const auto& parent : cls.parents) {
+        if (parent.lexeme == parent_name) return true;
+    }
+    return false;
+}
+
+std::string accessor_suffix_for_field_name(const std::string& field_name) {
+    if (field_name.empty()) return field_name;
+    std::string suffix = field_name;
+    suffix[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(suffix[0])));
+    return suffix;
 }
 
 std::string find_declaring_class_for_method(
@@ -248,11 +263,12 @@ IRModule IRGenerator::generate(const Program& program,
         for (const auto& parent : cls->parents) {
             parents.push_back(parent.lexeme);
         }
-        auto& methods = class_method_map_[cls->name.lexeme];
-        for (const auto& member : cls->members) {
-            if (member.kind == ClassMember::Kind::Method && member.method) {
-                methods.insert(member.method->name.lexeme);
-            }
+    }
+
+    for (const auto& entry : analyser_->classes()) {
+        auto& methods = class_method_map_[entry.first];
+        for (const auto& method_entry : entry.second.methods) {
+            methods.insert(method_entry.first);
         }
     }
 
@@ -284,6 +300,35 @@ void IRGenerator::visitClass(const ClassDecl& cls) {
     for (const auto& member : cls.members) {
         if (member.kind == ClassMember::Kind::Method && member.method) {
             visitMethod(*member.method, cls, parents);
+        }
+    }
+
+    if (has_parent_name(cls, "Aleka")) {
+        std::unordered_set<std::string> explicit_methods;
+        std::vector<const VariableDeclStmt*> aleka_fields;
+        for (const auto& member : cls.members) {
+            if (member.kind == ClassMember::Kind::Method && member.method) {
+                explicit_methods.insert(member.method->name.lexeme);
+            }
+        }
+        for (const auto& member : cls.members) {
+            if (member.kind != ClassMember::Kind::Statement || !member.statement ||
+                member.statement->kind != StmtKind::VariableDecl) {
+                continue;
+            }
+            const auto& field = static_cast<const VariableDeclStmt&>(*member.statement);
+            aleka_fields.push_back(&field);
+            const std::size_t field_index = aleka_fields.size() - 1;
+            const std::string suffix = accessor_suffix_for_field_name(field.name.lexeme);
+            if (!explicit_methods.count("get" + suffix)) {
+                visitSyntheticAlekaAccessor(cls, field, field_index, parents, true);
+            }
+            if (!explicit_methods.count("set" + suffix)) {
+                visitSyntheticAlekaAccessor(cls, field, field_index, parents, false);
+            }
+        }
+        if (!explicit_methods.count("of")) {
+            visitSyntheticAlekaFactory(cls, aleka_fields, parents);
         }
     }
 }
@@ -387,6 +432,169 @@ void IRGenerator::visitMethod(const MethodDecl& method, const ClassDecl& cls, co
         ret.type = return_type;
         emit(ret);
     }
+    scope_stack_.clear();
+    owned_values_.clear();
+    value_aliases_.clear();
+}
+
+IRType IRGenerator::ir_type_for_typeref(const TypeRef& type_ref) const {
+    if (type_ref.name == "Integer") return IRType::makeInteger(type_ref.isFileBacked);
+    if (type_ref.name == "Long") return IRType::makeLong(type_ref.isFileBacked);
+    if (type_ref.name == "Double") return IRType::makeDouble(type_ref.isFileBacked);
+    if (type_ref.name == "Boolean") return IRType::makeBoolean(type_ref.isFileBacked);
+    if (type_ref.name == "String") return IRType::makeString(type_ref.isFileBacked);
+    if (type_ref.isArray) return IRType::makeArray(IRType::makePointer(), type_ref.isFileBacked);
+    return IRType::makePointer(type_ref.isFileBacked);
+}
+
+void IRGenerator::visitSyntheticAlekaAccessor(const ClassDecl& cls,
+                                              const VariableDeclStmt& field,
+                                              std::size_t field_index,
+                                              const std::vector<std::string>& parents,
+                                              bool is_getter) {
+    current_class_name_ = cls.name.lexeme;
+    current_parents_ = parents;
+    symbol_table_.clear();
+    temp_counter_ = 0;
+    owned_values_.clear();
+    value_aliases_.clear();
+    scope_stack_.clear();
+
+    const std::string suffix = accessor_suffix_for_field_name(field.name.lexeme);
+    const std::string method_name = is_getter ? "get" + suffix : "set" + suffix;
+    const std::string func_name = cls.name.lexeme + "_" + method_name;
+    const IRType field_type = ir_type_for_typeref(field.type);
+
+    std::vector<IRParameter> params;
+    if (!is_getter) {
+        params.push_back({"value", field_type});
+    }
+
+    module_.add_function(func_name, is_getter ? field_type : IRType::makeVoid(), params);
+    current_function_ = module_.find_function(func_name);
+    IRFunction* func = current_function_;
+    IRParameter this_param{"this", IRType::makePointer()};
+    func->parameters.insert(func->parameters.begin(), this_param);
+
+    func->entry_block();
+    func->set_current_block(0);
+    push_scope();
+
+    for (const auto& param : func->parameters) {
+        std::string addr = new_temporary();
+        emit(IRInstruction::make_alloca(addr, param.type));
+        symbol_table_[param.name] = addr;
+        emit(IRInstruction::make_store(param.name, addr));
+    }
+
+    const std::string this_value = load_symbol_value("this", IRType::makePointer());
+    const std::string field_index_value = new_temporary();
+    emit(IRInstruction::make_const_int(field_index_value, static_cast<int64_t>(field_index)));
+
+    if (is_getter) {
+        std::string ret_val = new_temporary();
+        module_.add_external_symbol("aleka_get");
+        IRInstruction get_call;
+        get_call.opcode = IROpcode::CallRuntime;
+        get_call.type = field_type;
+        get_call.result = ret_val;
+        get_call.operands = {"aleka_get", this_value, field_index_value};
+        emit(get_call);
+        emit_all_scope_cleanups();
+        IRInstruction ret;
+        ret.opcode = IROpcode::Ret;
+        ret.type = field_type;
+        ret.operands = {ret_val};
+        emit(ret);
+    } else {
+        const std::string value = load_symbol_value("value", field_type);
+        module_.add_external_symbol("aleka_set");
+        IRInstruction set_call;
+        set_call.opcode = IROpcode::CallRuntime;
+        set_call.type = IRType::makeVoid();
+        set_call.operands = {"aleka_set", this_value, field_index_value, value};
+        emit(set_call);
+        emit_all_scope_cleanups();
+        IRInstruction ret;
+        ret.opcode = IROpcode::Ret;
+        ret.type = IRType::makeVoid();
+        emit(ret);
+    }
+
+    scope_stack_.clear();
+    owned_values_.clear();
+    value_aliases_.clear();
+}
+
+void IRGenerator::visitSyntheticAlekaFactory(const ClassDecl& cls,
+                                             const std::vector<const VariableDeclStmt*>& fields,
+                                             const std::vector<std::string>& parents) {
+    current_class_name_ = cls.name.lexeme;
+    current_parents_ = parents;
+    symbol_table_.clear();
+    temp_counter_ = 0;
+    owned_values_.clear();
+    value_aliases_.clear();
+    scope_stack_.clear();
+
+    std::vector<IRParameter> params;
+    for (const auto* field : fields) {
+        if (!field) continue;
+        params.push_back({field->name.lexeme, ir_type_for_typeref(field->type)});
+    }
+
+    const std::string func_name = cls.name.lexeme + "_of";
+    module_.add_function(func_name, IRType::makePointer(), params);
+    current_function_ = module_.find_function(func_name);
+    IRFunction* func = current_function_;
+    IRParameter this_param{"this", IRType::makePointer()};
+    func->parameters.insert(func->parameters.begin(), this_param);
+
+    func->entry_block();
+    func->set_current_block(0);
+    push_scope();
+
+    for (const auto& param : func->parameters) {
+        std::string addr = new_temporary();
+        emit(IRInstruction::make_alloca(addr, param.type));
+        symbol_table_[param.name] = addr;
+        emit(IRInstruction::make_store(param.name, addr));
+    }
+
+    std::string field_count = new_temporary();
+    emit(IRInstruction::make_const_int(field_count, static_cast<int64_t>(fields.size())));
+
+    std::string result = new_temporary();
+    module_.add_external_symbol("aleka_create");
+    IRInstruction create_call;
+    create_call.opcode = IROpcode::CallRuntime;
+    create_call.type = IRType::makePointer();
+    create_call.result = result;
+    create_call.operands = {"aleka_create", field_count};
+    emit(create_call);
+
+    for (std::size_t i = 0; i < fields.size(); ++i) {
+        const auto* field = fields[i];
+        if (!field) continue;
+        const IRType field_type = ir_type_for_typeref(field->type);
+        const std::string value = load_symbol_value(field->name.lexeme, field_type);
+        const std::string field_index_value = new_temporary();
+        emit(IRInstruction::make_const_int(field_index_value, static_cast<int64_t>(i)));
+        module_.add_external_symbol("aleka_set");
+        IRInstruction set_call;
+        set_call.opcode = IROpcode::CallRuntime;
+        set_call.type = IRType::makeVoid();
+        set_call.operands = {"aleka_set", result, field_index_value, value};
+        emit(set_call);
+    }
+
+    emit_all_scope_cleanups();
+    IRInstruction ret;
+    ret.opcode = IROpcode::Ret;
+    ret.type = IRType::makePointer();
+    ret.operands = {result};
+    emit(ret);
+
     scope_stack_.clear();
     owned_values_.clear();
     value_aliases_.clear();
@@ -1658,6 +1866,27 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
             }
             emit(call);
             return result_temp;
+        }
+
+        if (object_sem_type.kind == SemanticTypeKind::Class) {
+            auto target_class = analyser_->classes().find(object_sem_type.name);
+            if (target_class != analyser_->classes().end() &&
+                target_class->second.methods.find(member->member.lexeme) != target_class->second.methods.end()) {
+                std::string result_temp = new_temporary();
+                std::string mangled = object_sem_type.name + "_" + member->member.lexeme;
+                module_.add_external_symbol(mangled);
+
+                IRInstruction call;
+                call.opcode = IROpcode::CallRuntime;
+                call.type = ret_type;
+                call.result = result_temp;
+                call.operands = {mangled};
+                for (const auto& a : args) {
+                    call.operands.push_back(a);
+                }
+                emit(call);
+                return result_temp;
+            }
         }
 
         if (const auto* object_ident = dynamic_cast<const IdentifierExpr*>(member->object.get())) {

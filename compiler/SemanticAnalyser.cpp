@@ -1,5 +1,6 @@
 #include "SemanticAnalyser.h"
 
+#include <cctype>
 #include <sstream>
 #include <utility>
 
@@ -20,6 +21,20 @@ bool is_builtin_map_type(const SemanticType& type) {
 
 bool is_builtin_file_type(const SemanticType& type) {
     return type.kind == SemanticTypeKind::Class && type.name == "File";
+}
+
+bool has_parent(const ClassDecl& class_decl, const std::string& parent_name) {
+    for (const Token& parent : class_decl.parents) {
+        if (parent.lexeme == parent_name) return true;
+    }
+    return false;
+}
+
+std::string accessor_suffix_for_field(const std::string& field_name) {
+    if (field_name.empty()) return field_name;
+    std::string suffix = field_name;
+    suffix[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(suffix[0])));
+    return suffix;
 }
 
 } // namespace
@@ -126,11 +141,56 @@ bool SemanticAnalyser::collectDeclarations(const Program& program) {
             SemanticMethodSymbol method_symbol;
             method_symbol.name = method_decl.name.lexeme;
             method_symbol.declaration = &method_decl;
+            method_symbol.is_private = method_decl.isPrivate;
             method_symbol.return_type = SemanticType::makeUnknown();
             for (const ParameterDecl& parameter : method_decl.parameters) {
                 method_symbol.parameter_types.push_back(resolveType(parameter.type, parameter.name.start));
             }
             class_symbol.methods.emplace(method_symbol.name, std::move(method_symbol));
+        }
+
+        if (has_parent(class_decl, "Aleka")) {
+            for (const ClassMember& member : class_decl.members) {
+                if (member.kind != ClassMember::Kind::Statement || !member.statement ||
+                    member.statement->kind != StmtKind::VariableDecl) {
+                    continue;
+                }
+                const auto& field_decl = static_cast<const VariableDeclStmt&>(*member.statement);
+                const SemanticType field_type = resolveType(field_decl.type, field_decl.name.start);
+                const std::string suffix = accessor_suffix_for_field(field_decl.name.lexeme);
+
+                const std::string getter_name = "get" + suffix;
+                if (!contains_key(class_symbol.methods, getter_name)) {
+                    SemanticMethodSymbol getter_symbol;
+                    getter_symbol.name = getter_name;
+                    getter_symbol.return_type = field_type;
+                    class_symbol.methods.emplace(getter_name, std::move(getter_symbol));
+                }
+
+                const std::string setter_name = "set" + suffix;
+                if (!contains_key(class_symbol.methods, setter_name)) {
+                    SemanticMethodSymbol setter_symbol;
+                    setter_symbol.name = setter_name;
+                    setter_symbol.return_type = SemanticType::makeVoid();
+                    setter_symbol.parameter_types.push_back(field_type);
+                    class_symbol.methods.emplace(setter_name, std::move(setter_symbol));
+                }
+            }
+
+            if (!contains_key(class_symbol.methods, "of")) {
+                SemanticMethodSymbol of_symbol;
+                of_symbol.name = "of";
+                of_symbol.return_type = SemanticType::makeClass(class_decl.name.lexeme);
+                for (const ClassMember& member : class_decl.members) {
+                    if (member.kind != ClassMember::Kind::Statement || !member.statement ||
+                        member.statement->kind != StmtKind::VariableDecl) {
+                        continue;
+                    }
+                    const auto& field_decl = static_cast<const VariableDeclStmt&>(*member.statement);
+                    of_symbol.parameter_types.push_back(resolveType(field_decl.type, field_decl.name.start));
+                }
+                class_symbol.methods.emplace("of", std::move(of_symbol));
+            }
         }
 
         classes_.emplace(class_symbol.name, std::move(class_symbol));
@@ -444,6 +504,7 @@ SemanticType SemanticAnalyser::analyseExpr(const Expr& expr) {
 
 SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
     const SemanticMethodSymbol* method_symbol = nullptr;
+    const SemanticClassSymbol* owner_class = nullptr;
 
     if (const auto* ident = dynamic_cast<const IdentifierExpr*>(expr.callee.get())) {
         if (ident->name == "print" || ident->name == "println") {
@@ -454,7 +515,7 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
             rememberExprType(expr, result);
             return result;
         }
-        method_symbol = lookupCurrentClassMethod(ident->name);
+        method_symbol = findMethodInClassHierarchy(current_class_, ident->name, &owner_class);
         if (!method_symbol) {
             if (current_class_) {
                 for (const std::string& parent_name : current_class_->parents) {
@@ -473,10 +534,15 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
             rememberExprType(expr, SemanticType::makeError());
             return SemanticType::makeError();
         }
+        if (!canAccessMethod(owner_class, *method_symbol)) {
+            addError(expr.start, "method '" + ident->name + "' is private");
+            rememberExprType(expr, SemanticType::makeError());
+            return SemanticType::makeError();
+        }
     } else if (const auto* member = dynamic_cast<const MemberExpr*>(expr.callee.get())) {
         if (const auto* object_ident = dynamic_cast<const IdentifierExpr*>(member->object.get())) {
             if (const SemanticClassSymbol* class_symbol = lookupClass(object_ident->name)) {
-                method_symbol = lookupMethodInClass(class_symbol, member->member.lexeme);
+                method_symbol = findMethodInClassHierarchy(class_symbol, member->member.lexeme, &owner_class);
             }
             if (!method_symbol && object_ident->name == "Map") {
                 for (const auto& arg : expr.arguments) {
@@ -514,7 +580,7 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
             const SemanticType object_type = analyseExpr(*member->object);
             if (object_type.kind == SemanticTypeKind::Class) {
                 if (const SemanticClassSymbol* class_symbol = lookupClass(object_type.name)) {
-                    method_symbol = lookupMethodInClass(class_symbol, member->member.lexeme);
+                    method_symbol = findMethodInClassHierarchy(class_symbol, member->member.lexeme, &owner_class);
                 }
                 if (!method_symbol && is_builtin_map_type(object_type)) {
                     for (const auto& arg : expr.arguments) {
@@ -616,6 +682,12 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
                 rememberExprType(expr, result_type);
                 return result_type;
             }
+        }
+
+        if (method_symbol && !canAccessMethod(owner_class, *method_symbol)) {
+            addError(expr.start, "method '" + member->member.lexeme + "' is private");
+            rememberExprType(expr, SemanticType::makeError());
+            return SemanticType::makeError();
         }
 
         if (!method_symbol) {
@@ -1025,20 +1097,38 @@ const SemanticMethodSymbol* SemanticAnalyser::lookupCurrentClassMethod(const std
 }
 
 const SemanticMethodSymbol* SemanticAnalyser::lookupMethodInClass(const SemanticClassSymbol* class_symbol, const std::string& name) const {
+    const SemanticClassSymbol* owner_class = nullptr;
+    const SemanticMethodSymbol* method = findMethodInClassHierarchy(class_symbol, name, &owner_class);
+    if (!method || !canAccessMethod(owner_class, *method)) {
+        return nullptr;
+    }
+    return method;
+}
+
+const SemanticMethodSymbol* SemanticAnalyser::findMethodInClassHierarchy(const SemanticClassSymbol* class_symbol,
+                                                                         const std::string& name,
+                                                                         const SemanticClassSymbol** owner_class) const {
     if (!class_symbol) return nullptr;
     auto it = class_symbol->methods.find(name);
-    if (it != class_symbol->methods.end()) return &it->second;
+    if (it != class_symbol->methods.end()) {
+        if (owner_class) *owner_class = class_symbol;
+        return &it->second;
+    }
 
     for (const std::string& parent_name : class_symbol->parents) {
         auto parent_it = classes_.find(parent_name);
         if (parent_it != classes_.end()) {
-            if (const SemanticMethodSymbol* method = lookupMethodInClass(&parent_it->second, name)) {
+            if (const SemanticMethodSymbol* method = findMethodInClassHierarchy(&parent_it->second, name, owner_class)) {
                 return method;
             }
         }
     }
 
     return nullptr;
+}
+
+bool SemanticAnalyser::canAccessMethod(const SemanticClassSymbol* owner_class, const SemanticMethodSymbol& method) const {
+    return !method.is_private || owner_class == current_class_;
 }
 
 const SemanticClassSymbol* SemanticAnalyser::lookupClass(const std::string& name) const {

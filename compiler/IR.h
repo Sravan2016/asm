@@ -224,13 +224,20 @@ private:
     std::size_t current_block_index_ = 0;
 };
 
+struct IRGlobal {
+    std::string name;
+    IRType type;
+};
+
 struct IRModule {
     std::vector<IRFunction> functions;
+    std::vector<IRGlobal> globals;
     std::vector<std::string> string_constants;
     std::vector<std::string> external_symbols;
 
     IRFunction& add_function(const std::string& name, IRType return_type, const std::vector<IRParameter>& params);
     IRFunction* find_function(const std::string& name);
+    void add_global(const std::string& name, IRType type);
     void add_external_symbol(const std::string& name);
     void add_string_constant(const std::string& name, const std::string& value);
 

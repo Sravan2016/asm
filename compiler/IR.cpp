@@ -249,6 +249,13 @@ IRFunction* IRModule::find_function(const std::string& name) {
     return nullptr;
 }
 
+void IRModule::add_global(const std::string& name, IRType type) {
+    for (const auto& global : globals) {
+        if (global.name == name) return;
+    }
+    globals.push_back({name, type});
+}
+
 void IRModule::add_external_symbol(const std::string& name) {
     for (const auto& sym : external_symbols) {
         if (sym == name) return;
@@ -261,6 +268,12 @@ void IRModule::add_string_constant(const std::string& name, const std::string& v
 }
 
 void IRModule::dump() const {
+    for (const auto& global : globals) {
+        printf("global %s: %s\n", global.name.c_str(), global.type.to_string().c_str());
+    }
+    if (!globals.empty()) {
+        printf("\n");
+    }
     for (const auto& func : functions) {
         std::string ret = func.return_type.to_string();
         std::string params;

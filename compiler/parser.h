@@ -285,6 +285,7 @@ struct LambdaExpr final : Expr {
 
 struct MethodDecl {
     Token name;
+    bool isPrivate = false;
     std::vector<ParameterDecl> parameters;
     std::vector<std::unique_ptr<Stmt>> body;
     std::unique_ptr<Expr> returnValue;
@@ -345,6 +346,7 @@ private:
     bool isSwitchCaseStart() const;
     bool looksLikeSwitchBlock() const;
     bool isMethodReturnStart() const;
+    bool looksLikeMethodDecl() const;
     bool looksLikeLambda() const;
     bool looksLikeParenStatement() const;
 

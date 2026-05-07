@@ -41,6 +41,7 @@ enum class TokenKind {
     KeywordFrom,
     KeywordTrue,
     KeywordFalse,
+    KeywordPrivate,
 
     ArrowClassStart,   // ->
     ArrowClassEnd,     // <-

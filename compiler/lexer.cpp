@@ -317,6 +317,7 @@ TokenKind Lexer::keywordKind(const std::string& text) {
     if (text == "from") return TokenKind::KeywordFrom;
     if (text == "true") return TokenKind::KeywordTrue;
     if (text == "false") return TokenKind::KeywordFalse;
+    if (text == "private") return TokenKind::KeywordPrivate;
     return TokenKind::Identifier;
 }
 
@@ -357,6 +358,7 @@ const char* token_kind_name(TokenKind kind) {
         case TokenKind::KeywordFrom: return "KeywordFrom";
         case TokenKind::KeywordTrue: return "KeywordTrue";
         case TokenKind::KeywordFalse: return "KeywordFalse";
+        case TokenKind::KeywordPrivate: return "KeywordPrivate";
         case TokenKind::ArrowClassStart: return "ArrowClassStart";
         case TokenKind::ArrowClassEnd: return "ArrowClassEnd";
         case TokenKind::ArrowMethodStart: return "ArrowMethodStart";

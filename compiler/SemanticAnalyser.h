@@ -55,6 +55,7 @@ struct SemanticMethodSymbol {
     std::vector<SemanticType> parameter_types;
     SemanticType return_type;
     const MethodDecl* declaration = nullptr;
+    bool is_private = false;
 };
 
 struct SemanticClassSymbol {
@@ -99,6 +100,10 @@ private:
     SemanticVariableSymbol* lookupVariable(const std::string& name);
     const SemanticMethodSymbol* lookupCurrentClassMethod(const std::string& name) const;
     const SemanticMethodSymbol* lookupMethodInClass(const SemanticClassSymbol* class_symbol, const std::string& name) const;
+    const SemanticMethodSymbol* findMethodInClassHierarchy(const SemanticClassSymbol* class_symbol,
+                                                           const std::string& name,
+                                                           const SemanticClassSymbol** owner_class = nullptr) const;
+    bool canAccessMethod(const SemanticClassSymbol* owner_class, const SemanticMethodSymbol& method) const;
     const SemanticClassSymbol* lookupClass(const std::string& name) const;
     SemanticVariableSymbol* declareVariable(const Token& name, const SemanticType& type, bool implicit);
     SemanticVariableSymbol* declareVariable(const std::string& name, const SourceLocation& location, const SemanticType& type, bool implicit);

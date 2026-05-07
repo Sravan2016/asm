@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // ============================================================================
@@ -108,6 +109,7 @@ private:
     int func_stack_size_;
     std::string current_func_;
     std::vector<std::string> module_string_constants_;
+    std::unordered_map<std::string, IRType> global_map_;
 
     // --- Build Pipeline ---
     std::string nasm_path_;

@@ -107,6 +107,11 @@ void LinkingRuntime::emit_move_to_reg_sysv(const std::string& value,
                                             const IRType& type,
                                             std::ostringstream& out) {
     if (!value.empty() && value[0] == '&') {
+        auto global_it = global_map_.find(value.substr(1));
+        if (global_it != global_map_.end()) {
+            out << "    lea " << reg << ", [rel " << value.substr(1) << "]\n";
+            return;
+        }
         auto it = var_map_.find(value.substr(1));
         if (it != var_map_.end()) {
             out << "    lea " << reg << ", [rbp" << (it->second.offset > 0 ? "+" : "")
@@ -130,6 +135,12 @@ void LinkingRuntime::emit_move_to_reg_sysv(const std::string& value,
         return;
     }
 
+    auto global_it = global_map_.find(value);
+    if (global_it != global_map_.end()) {
+        out << "    mov " << reg << ", [rel " << value << "]\n";
+        return;
+    }
+
     // String constant reference
     if (value.find("str_") == 0) {
         out << "    lea " << reg << ", [rel " << value << "]\n";
@@ -147,6 +158,10 @@ void LinkingRuntime::emit_move_to_reg_sysv(const std::string& value,
 std::string LinkingRuntime::generate_assembly(const IRModule& module, bool emit_entry_point) {
     std::ostringstream out;
     module_string_constants_ = module.string_constants;
+    global_map_.clear();
+    for (const auto& global : module.globals) {
+        global_map_[global.name] = global.type;
+    }
 
     emit_data_section(module, out);
     emit_bss_section(module, out);
@@ -190,7 +205,9 @@ void LinkingRuntime::emit_data_section(const IRModule& module, std::ostringstrea
 
 void LinkingRuntime::emit_bss_section(const IRModule& module, std::ostringstream& out) {
     out << "section .bss\n";
-    out << "    ; Global uninitialized variables (if any)\n";
+    for (const auto& global : module.globals) {
+        out << "    " << global.name << " resq 1\n";
+    }
     out << "\n";
 }
 
@@ -238,6 +255,7 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         "array_size", "array_remove", "array_free",
         "array_sort", "array_filter", "array_map", "array_join",
         "array_join_int", "array_join_long", "array_join_double", "array_join_bool",
+        "aleka_create", "aleka_set", "aleka_get", "aleka_free",
 
         // Map functions
         "map_init", "map_create", "map_put", "map_get",
@@ -396,9 +414,16 @@ void LinkingRuntime::emit_function_sysv(const IRFunction& func, std::ostringstre
 
     for (std::size_t i = 0; i < func.parameters.size(); ++i) {
         const auto& param = func.parameters[i];
-        const char* reg = param_reg_sysv(i);
-        body << "    mov [rbp" << var_map_[param.name].offset << "], " << reg
-             << "  ; param '" << param.name << "'\n";
+        if (abi_ == ABIKind::Windows_x64 && i >= reg_params) {
+            const int stack_arg_offset = 16 + static_cast<int>((i - reg_params) * 8);
+            body << "    mov rax, [rbp+" << stack_arg_offset << "]\n";
+            body << "    mov [rbp" << var_map_[param.name].offset << "], rax"
+                 << "  ; param '" << param.name << "'\n";
+        } else {
+            const char* reg = param_reg_sysv(i);
+            body << "    mov [rbp" << var_map_[param.name].offset << "], " << reg
+                 << "  ; param '" << param.name << "'\n";
+        }
     }
 
     for (const auto& entry : module_string_constants_) {
@@ -762,6 +787,11 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
                 var_map_[inst.result] = {stack_offset_, inst.type, false};
                 out << "    mov " << rax << ", [rbp" << it->second.offset << "]\n";
                 out << "    mov [rbp" << stack_offset_ << "], " << rax << "\n";
+            } else if (global_map_.find(inst.operands[0]) != global_map_.end()) {
+                stack_offset_ -= 8;
+                var_map_[inst.result] = {stack_offset_, inst.type, false};
+                out << "    mov " << rax << ", [rel " << inst.operands[0] << "]\n";
+                out << "    mov [rbp" << stack_offset_ << "], " << rax << "\n";
             }
             break;
         }
@@ -771,6 +801,9 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
             if (it != var_map_.end()) {
                 emit_move_to_reg_sysv(inst.operands[0], rax, inst.type, out);
                 out << "    mov [rbp" << it->second.offset << "], " << rax << "\n";
+            } else if (global_map_.find(inst.operands[1]) != global_map_.end()) {
+                emit_move_to_reg_sysv(inst.operands[0], rax, inst.type, out);
+                out << "    mov [rel " << inst.operands[1] << "], " << rax << "\n";
             }
             break;
         }
@@ -1247,13 +1280,17 @@ RuntimeRegistry::RuntimeRegistry() {
     functions_["array_filter"] = {"array_filter", {"ptr","ptr"},  "ptr", "array.obj"};
     functions_["array_map"]    = {"array_map",    {"ptr","ptr","ptr"}, "void", "array.obj"};
     functions_["array_join"]   = {"array_join",   {"ptr","ptr","ptr"}, "void", "array.obj"};
-    functions_["array_join_int"]    = {"array_join_int",    {"ptr","ptr","ptr"}, "void", "array.obj"};
-    functions_["array_join_long"]   = {"array_join_long",   {"ptr","ptr","ptr"}, "void", "array.obj"};
-    functions_["array_join_double"] = {"array_join_double", {"ptr","ptr","ptr"}, "void", "array.obj"};
-    functions_["array_join_bool"]   = {"array_join_bool",   {"ptr","ptr","ptr"}, "void", "array.obj"};
+      functions_["array_join_int"]    = {"array_join_int",    {"ptr","ptr","ptr"}, "void", "array.obj"};
+      functions_["array_join_long"]   = {"array_join_long",   {"ptr","ptr","ptr"}, "void", "array.obj"};
+      functions_["array_join_double"] = {"array_join_double", {"ptr","ptr","ptr"}, "void", "array.obj"};
+      functions_["array_join_bool"]   = {"array_join_bool",   {"ptr","ptr","ptr"}, "void", "array.obj"};
+      functions_["aleka_create"] = {"aleka_create", {"i64"}, "ptr", "aleka.obj"};
+      functions_["aleka_set"]    = {"aleka_set",    {"ptr","i64","i64"}, "void", "aleka.obj"};
+      functions_["aleka_get"]    = {"aleka_get",    {"ptr","i64"}, "i64", "aleka.obj"};
+      functions_["aleka_free"]   = {"aleka_free",   {"ptr"}, "void", "aleka.obj"};
 
-    // Map functions
-    functions_["map_create"]       = {"map_create",       {"i64","ptr","ptr"}, "ptr",  "map.obj"};
+      // Map functions
+      functions_["map_create"]       = {"map_create",       {"i64","ptr","ptr"}, "ptr",  "map.obj"};
     functions_["map_put"]          = {"map_put",          {"ptr","ptr","ptr"}, "ptr",  "map.obj"};
     functions_["map_get"]          = {"map_get",          {"ptr","ptr"},       "ptr",  "map.obj"};
     functions_["map_contains_key"] = {"map_contains_key", {"ptr","ptr"},       "bool", "map.obj"};

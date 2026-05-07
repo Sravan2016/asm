@@ -19,6 +19,14 @@ private:
     // Class and method visitation
     void visitClass(const ClassDecl& cls);
     void visitMethod(const MethodDecl& method, const ClassDecl& cls, const std::vector<std::string>& parents);
+    void visitSyntheticAlekaAccessor(const ClassDecl& cls,
+                                     const VariableDeclStmt& field,
+                                     std::size_t field_index,
+                                     const std::vector<std::string>& parents,
+                                     bool is_getter);
+    void visitSyntheticAlekaFactory(const ClassDecl& cls,
+                                    const std::vector<const VariableDeclStmt*>& fields,
+                                    const std::vector<std::string>& parents);
 
     // Statement visitation
     void visitStatementSequence(const std::vector<std::unique_ptr<Stmt>>& statements);
@@ -50,6 +58,7 @@ private:
     std::string load_symbol_value(const std::string& name, const IRType& type);
     std::string emit_string_constant(const std::string& value, bool raw_cstr_data = false);
     std::string ensure_file_line_slot();
+    IRType ir_type_for_typeref(const TypeRef& type_ref) const;
 
     // Helpers
     std::string new_temporary();

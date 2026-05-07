@@ -229,6 +229,19 @@ bool Parser::isMethodReturnStart() const {
     return false;
 }
 
+bool Parser::looksLikeMethodDecl() const {
+    std::size_t idx = current_;
+    if (idx >= tokens_.size()) return false;
+
+    if (tokens_[idx].kind == TokenKind::KeywordPrivate) {
+        ++idx;
+    }
+
+    return idx + 1 < tokens_.size() &&
+           tokens_[idx].kind == TokenKind::Identifier &&
+           tokens_[idx + 1].kind == TokenKind::LeftBrace;
+}
+
 bool Parser::looksLikeLambda() const {
     if (!check(TokenKind::LeftParen)) return false;
 
@@ -317,10 +330,10 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
     auto classDecl = std::make_unique<ClassDecl>();
     classDecl->name = std::move(name);
 
-    while (match(TokenKind::DoubleColon)) {
+    while (match(TokenKind::DoubleColon) || match(TokenKind::Colon)) {
         Token parent = advance();
         if (parent.kind != TokenKind::Identifier && !isTypeToken(parent)) {
-            addErrorAtCurrent("expected trait name after '::'");
+            addErrorAtCurrent("expected trait name after ':'");
         }
         classDecl->parents.push_back(std::move(parent));
     }
@@ -338,8 +351,7 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
 
 ClassMember Parser::parseClassMember() {
     ClassMember member;
-    if (check(TokenKind::Identifier) && current_ + 1 < tokens_.size() &&
-        tokens_[current_ + 1].kind == TokenKind::LeftBrace) {
+    if (looksLikeMethodDecl()) {
         member.kind = ClassMember::Kind::Method;
         member.method = parseMethodDecl();
         return member;
@@ -352,6 +364,7 @@ ClassMember Parser::parseClassMember() {
 
 std::unique_ptr<MethodDecl> Parser::parseMethodDecl() {
     auto method = std::make_unique<MethodDecl>();
+    method->isPrivate = match(TokenKind::KeywordPrivate);
     method->name = consume(TokenKind::Identifier, "expected method name");
 
     consume(TokenKind::LeftBrace, "expected '{' after method name");

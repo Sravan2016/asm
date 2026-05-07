@@ -1,0 +1,7 @@
+Users:: Aleka ->
+    Integer id;
+    String userName;
+    String mailId;
+    String password;
+    Integer phoneNumber;
+<-

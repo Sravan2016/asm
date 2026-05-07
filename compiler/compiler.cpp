@@ -87,6 +87,23 @@ bool path_exists(const std::string& path) {
     return static_cast<bool>(input);
 }
 
+bool is_builtin_class_name(const std::string& name) {
+    return name == "Map" || name == "File" || name == "Thread";
+}
+
+bool looks_like_class_name(const std::string& name) {
+    return !name.empty() && std::isupper(static_cast<unsigned char>(name[0])) != 0;
+}
+
+bool program_has_class_named(const Program& program, const std::string& class_name) {
+    for (const auto& cls : program.classes) {
+        if (cls && cls->name.lexeme == class_name) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string class_name_to_path(const std::string& base_dir, const Token& class_name) {
     std::string result = base_dir;
     if (!result.empty() && result.back() != '\\' && result.back() != '/') {
@@ -113,6 +130,210 @@ bool parse_file(const std::string& path, Program& out_program, std::vector<LexEr
     if (parser.hasError()) {
         out_parse_errors.insert(out_parse_errors.end(), parser.errors().begin(), parser.errors().end());
         return false;
+    }
+    return true;
+}
+
+bool resolve_imports(Program& program, const std::string& source_file_path, std::set<std::string>& visited);
+
+void collect_class_refs_from_type(const TypeRef& type_ref, std::unordered_set<std::string>& out) {
+    if (looks_like_class_name(type_ref.name) && !is_builtin_class_name(type_ref.name) &&
+        type_ref.name != "Integer" && type_ref.name != "Long" && type_ref.name != "Double" &&
+        type_ref.name != "Boolean" && type_ref.name != "String" && type_ref.name != "Array") {
+        out.insert(type_ref.name);
+    }
+}
+
+void collect_class_refs_from_expr(const Expr* expr, std::unordered_set<std::string>& out);
+
+void collect_class_refs_from_stmt(const Stmt* stmt, std::unordered_set<std::string>& out) {
+    if (!stmt) return;
+    switch (stmt->kind) {
+        case StmtKind::Expression: {
+            const auto& expr_stmt = static_cast<const ExprStmt&>(*stmt);
+            collect_class_refs_from_expr(expr_stmt.expression.get(), out);
+            break;
+        }
+        case StmtKind::VariableDecl: {
+            const auto& decl_stmt = static_cast<const VariableDeclStmt&>(*stmt);
+            collect_class_refs_from_type(decl_stmt.type, out);
+            collect_class_refs_from_expr(decl_stmt.initializer.get(), out);
+            break;
+        }
+        case StmtKind::Print: {
+            const auto& print_stmt = static_cast<const PrintStmt&>(*stmt);
+            collect_class_refs_from_expr(print_stmt.expression.get(), out);
+            break;
+        }
+        case StmtKind::GuardBlock: {
+            const auto& guard_stmt = static_cast<const GuardBlockStmt&>(*stmt);
+            collect_class_refs_from_expr(guard_stmt.condition.get(), out);
+            for (const auto& body_stmt : guard_stmt.body) {
+                collect_class_refs_from_stmt(body_stmt.get(), out);
+            }
+            for (const auto& body_stmt : guard_stmt.elseBody) {
+                collect_class_refs_from_stmt(body_stmt.get(), out);
+            }
+            break;
+        }
+        case StmtKind::ForEach: {
+            const auto& foreach_stmt = static_cast<const ForEachStmt&>(*stmt);
+            collect_class_refs_from_type(foreach_stmt.type, out);
+            collect_class_refs_from_expr(foreach_stmt.iterable.get(), out);
+            for (const auto& body_stmt : foreach_stmt.body) {
+                collect_class_refs_from_stmt(body_stmt.get(), out);
+            }
+            break;
+        }
+        case StmtKind::Switch: {
+            const auto& switch_stmt = static_cast<const SwitchStmt&>(*stmt);
+            collect_class_refs_from_expr(switch_stmt.subject.get(), out);
+            for (const auto& switch_case : switch_stmt.cases) {
+                collect_class_refs_from_expr(switch_case.label.get(), out);
+                for (const auto& body_stmt : switch_case.body) {
+                    collect_class_refs_from_stmt(body_stmt.get(), out);
+                }
+            }
+            break;
+        }
+        case StmtKind::Return: {
+            const auto& return_stmt = static_cast<const ReturnStmt&>(*stmt);
+            collect_class_refs_from_expr(return_stmt.expression.get(), out);
+            break;
+        }
+    }
+}
+
+void collect_class_refs_from_expr(const Expr* expr, std::unordered_set<std::string>& out) {
+    if (!expr) return;
+    switch (expr->kind) {
+        case ExprKind::Identifier: {
+            const auto& ident = static_cast<const IdentifierExpr&>(*expr);
+            if (looks_like_class_name(ident.name) && !is_builtin_class_name(ident.name)) {
+                out.insert(ident.name);
+            }
+            break;
+        }
+        case ExprKind::Unary:
+            collect_class_refs_from_expr(static_cast<const UnaryExpr&>(*expr).operand.get(), out);
+            break;
+        case ExprKind::Binary: {
+            const auto& binary = static_cast<const BinaryExpr&>(*expr);
+            collect_class_refs_from_expr(binary.left.get(), out);
+            collect_class_refs_from_expr(binary.right.get(), out);
+            break;
+        }
+        case ExprKind::Assignment: {
+            const auto& assign = static_cast<const AssignmentExpr&>(*expr);
+            collect_class_refs_from_expr(assign.target.get(), out);
+            collect_class_refs_from_expr(assign.value.get(), out);
+            break;
+        }
+        case ExprKind::Call: {
+            const auto& call = static_cast<const CallExpr&>(*expr);
+            collect_class_refs_from_expr(call.callee.get(), out);
+            for (const auto& arg : call.arguments) {
+                collect_class_refs_from_expr(arg.get(), out);
+            }
+            break;
+        }
+        case ExprKind::Member:
+            collect_class_refs_from_expr(static_cast<const MemberExpr&>(*expr).object.get(), out);
+            break;
+        case ExprKind::Index: {
+            const auto& index = static_cast<const IndexExpr&>(*expr);
+            collect_class_refs_from_expr(index.object.get(), out);
+            collect_class_refs_from_expr(index.index.get(), out);
+            break;
+        }
+        case ExprKind::Postfix:
+            collect_class_refs_from_expr(static_cast<const PostfixExpr&>(*expr).operand.get(), out);
+            break;
+        case ExprKind::Grouping:
+            collect_class_refs_from_expr(static_cast<const GroupingExpr&>(*expr).inner.get(), out);
+            break;
+        case ExprKind::ArrayLiteral: {
+            const auto& array = static_cast<const ArrayLiteralExpr&>(*expr);
+            for (const auto& element : array.elements) {
+                collect_class_refs_from_expr(element.get(), out);
+            }
+            break;
+        }
+        case ExprKind::Conditional: {
+            const auto& cond = static_cast<const ConditionalExpr&>(*expr);
+            collect_class_refs_from_expr(cond.condition.get(), out);
+            collect_class_refs_from_expr(cond.thenBranch.get(), out);
+            collect_class_refs_from_expr(cond.elseBranch.get(), out);
+            break;
+        }
+        case ExprKind::Lambda: {
+            const auto& lambda = static_cast<const LambdaExpr&>(*expr);
+            for (const auto& param : lambda.parameters) {
+                collect_class_refs_from_type(param.type, out);
+            }
+            for (const auto& body_stmt : lambda.body) {
+                collect_class_refs_from_stmt(body_stmt.get(), out);
+            }
+            break;
+        }
+        case ExprKind::IntegerLiteral:
+        case ExprKind::LongLiteral:
+        case ExprKind::DoubleLiteral:
+        case ExprKind::StringLiteral:
+        case ExprKind::BooleanLiteral:
+            break;
+    }
+}
+
+void collect_class_refs_from_program(const Program& program, std::unordered_set<std::string>& out) {
+    for (const auto& cls : program.classes) {
+        if (!cls) continue;
+        for (const auto& parent : cls->parents) {
+            if (looks_like_class_name(parent.lexeme) && !is_builtin_class_name(parent.lexeme)) {
+                out.insert(parent.lexeme);
+            }
+        }
+        for (const auto& member : cls->members) {
+            if (member.kind == ClassMember::Kind::Statement) {
+                collect_class_refs_from_stmt(member.statement.get(), out);
+            } else if (member.kind == ClassMember::Kind::Method && member.method) {
+                for (const auto& param : member.method->parameters) {
+                    collect_class_refs_from_type(param.type, out);
+                }
+                for (const auto& stmt : member.method->body) {
+                    collect_class_refs_from_stmt(stmt.get(), out);
+                }
+                collect_class_refs_from_expr(member.method->returnValue.get(), out);
+            }
+        }
+    }
+}
+
+bool resolve_same_folder_class_refs(const Program& program,
+                                    const std::string& base_dir,
+                                    const std::string& source_file_path,
+                                    std::set<std::string>& visited,
+                                    std::vector<Program>& imported_programs,
+                                    std::vector<LexError>& lex_errors,
+                                    std::vector<ParseError>& parse_errors) {
+    std::unordered_set<std::string> class_refs;
+    collect_class_refs_from_program(program, class_refs);
+    for (const auto& class_name : class_refs) {
+        Token token;
+        token.lexeme = class_name;
+        const std::string class_path = class_name_to_path(base_dir, token);
+        if (class_path == source_file_path || !path_exists(class_path) || visited.count(class_path)) {
+            continue;
+        }
+        visited.insert(class_path);
+        Program imported;
+        if (!parse_file(class_path, imported, lex_errors, parse_errors)) {
+            return false;
+        }
+        if (!resolve_imports(imported, class_path, visited)) {
+            return false;
+        }
+        imported_programs.push_back(std::move(imported));
     }
     return true;
 }
@@ -147,6 +368,18 @@ bool collect_module_paths(const std::string& source_file_path,
             if (!collect_module_paths(parent_path, visited, ordered_paths, out_lex_errors, out_parse_errors)) {
                 return false;
             }
+        }
+    }
+
+    std::unordered_set<std::string> class_refs;
+    collect_class_refs_from_program(program, class_refs);
+    for (const auto& class_name : class_refs) {
+        Token token;
+        token.lexeme = class_name;
+        const std::string class_path = class_name_to_path(base_dir, token);
+        if (class_path == source_file_path || !path_exists(class_path)) continue;
+        if (!collect_module_paths(class_path, visited, ordered_paths, out_lex_errors, out_parse_errors)) {
+            return false;
         }
     }
 
@@ -220,8 +453,17 @@ bool resolve_imports(Program& program, const std::string& source_file_path, std:
         }
     }
 
+    if (!resolve_same_folder_class_refs(program, base_dir, source_file_path, visited,
+                                        imported_programs, lex_errors, parse_errors)) {
+        return false;
+    }
+
     for (Program& imported : imported_programs) {
         for (auto& cls : imported.classes) {
+            if (!cls) continue;
+            if (program_has_class_named(program, cls->name.lexeme)) {
+                continue;
+            }
             program.classes.push_back(std::move(cls));
         }
     }
