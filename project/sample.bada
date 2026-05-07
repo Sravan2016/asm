@@ -26,17 +26,17 @@ Sample ->
           println(i + " from While loop\n");
           i++;
         }
-       if(i == 11){
-         println("i from if loop " + i + "\n");
-       } else if(i == 20){
-         println("i from if loop " + i + "\n");
-       } else if(i == 30){
-         println("i from if loop " + i + "\n");
-       } else if(i == 40){
-         println("i from if loop " + i + "\n");
-       } else {
-         println("i from if loop " + i + "\n");
-       }
+        if(i == 11){
+          println("i from if loop " + i + "\n");
+        } else if(i == 20){
+          println("i from if loop " + i + "\n");
+        } else if(i == 30){
+          println("i from if loop " + i + "\n");
+        } else if(i == 40){
+          println("i from if loop " + i + "\n");
+        } else {
+          println("i from if loop " + i + "\n");
+        }
         i == 11 ? println("i from if loop " + i + "\n")
         : i == 20 ? println("i from if loop " + i + "\n")
         : i == 30 ? println("i from if loop " + i + "\n")
