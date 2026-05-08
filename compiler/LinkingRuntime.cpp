@@ -228,6 +228,7 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         "string_equals_icase", "string_contains_sub", "string_char_at",
         "string_trim", "string_split",
         "fromInteger", "fromLong", "fromDouble",
+        "bada_heap_alloc",
 
         // Integer functions
         "int_add", "int_sub", "int_mul", "int_div", "int_mod",
@@ -832,7 +833,31 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
 
         case IROpcode::Ret: {
             if (!inst.operands.empty()) {
-                emit_move_to_reg_sysv(inst.operands[0], rax, inst.type, out);
+                if (inst.type.kind == IRTypeKind::String && !inst.type.is_file_backed) {
+                    out << "    xor rcx, rcx\n";
+                    out << "    mov rdx, 8\n";
+                    out << "    mov r8, 16\n";
+                    if (abi_ == ABIKind::Windows_x64) {
+                        out << "    sub rsp, 32  ; shadow space\n";
+                    }
+                    out << "    call bada_heap_alloc\n";
+                    if (abi_ == ABIKind::Windows_x64) {
+                        out << "    add rsp, 32  ; clean shadow space\n";
+                    }
+                    out << "    mov rbx, rax\n";
+                    emit_move_to_reg_sysv(inst.operands[0], "rdx", inst.type, out);
+                    out << "    mov rcx, rbx\n";
+                    if (abi_ == ABIKind::Windows_x64) {
+                        out << "    sub rsp, 32  ; shadow space\n";
+                    }
+                    out << "    call string_copy\n";
+                    if (abi_ == ABIKind::Windows_x64) {
+                        out << "    add rsp, 32  ; clean shadow space\n";
+                    }
+                    out << "    mov rax, rbx\n";
+                } else {
+                    emit_move_to_reg_sysv(inst.operands[0], rax, inst.type, out);
+                }
             } else {
                 out << "    xor " << rax << ", " << rax << "\n";
             }

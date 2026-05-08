@@ -330,6 +330,9 @@ void IRGenerator::visitClass(const ClassDecl& cls) {
         if (!explicit_methods.count("of")) {
             visitSyntheticAlekaFactory(cls, aleka_fields, parents);
         }
+        if (!explicit_methods.count("toString")) {
+            visitSyntheticAlekaToString(cls, aleka_fields, parents);
+        }
     }
 }
 
@@ -593,6 +596,92 @@ void IRGenerator::visitSyntheticAlekaFactory(const ClassDecl& cls,
     ret.opcode = IROpcode::Ret;
     ret.type = IRType::makePointer();
     ret.operands = {result};
+    emit(ret);
+
+    scope_stack_.clear();
+    owned_values_.clear();
+    value_aliases_.clear();
+}
+
+void IRGenerator::visitSyntheticAlekaToString(const ClassDecl& cls,
+                                              const std::vector<const VariableDeclStmt*>& fields,
+                                              const std::vector<std::string>& parents) {
+    current_class_name_ = cls.name.lexeme;
+    current_parents_ = parents;
+    symbol_table_.clear();
+    temp_counter_ = 0;
+    owned_values_.clear();
+    value_aliases_.clear();
+    scope_stack_.clear();
+
+    const std::string func_name = cls.name.lexeme + "_toString";
+    module_.add_function(func_name, IRType::makeString(), {});
+    current_function_ = module_.find_function(func_name);
+    IRFunction* func = current_function_;
+    IRParameter this_param{"this", IRType::makePointer()};
+    func->parameters.insert(func->parameters.begin(), this_param);
+
+    func->entry_block();
+    func->set_current_block(0);
+    push_scope();
+
+    std::string this_addr = new_temporary();
+    emit(IRInstruction::make_alloca(this_addr, IRType::makePointer()));
+    symbol_table_["this"] = this_addr;
+    emit(IRInstruction::make_store("this", this_addr));
+
+    auto append_string = [&](const std::string& left, const std::string& right) {
+        std::string dest = new_temporary();
+        IRInstruction add;
+        add.opcode = IROpcode::Add;
+        add.type = IRType::makeString();
+        add.result = dest;
+        add.operands = {left, right};
+        emit(add);
+        register_owned_value(dest, "string_free", CleanupOperandKind::DirectValue);
+        return dest;
+    };
+
+    auto append_literal = [&](const std::string& left, const std::string& literal) {
+        return append_string(left, emit_string_constant(literal));
+    };
+
+    std::string json = emit_string_constant("{");
+    for (std::size_t i = 0; i < fields.size(); ++i) {
+        const auto* field = fields[i];
+        if (!field) continue;
+
+        std::string prefix = (i == 0 ? "\"" : ",\"");
+        prefix += field->name.lexeme;
+        prefix += "\":";
+        json = append_literal(json, prefix);
+
+        const std::string getter_name = cls.name.lexeme + "_get" + accessor_suffix_for_field_name(field->name.lexeme);
+        module_.add_external_symbol(getter_name);
+        std::string field_value = new_temporary();
+        IRInstruction getter_call;
+        getter_call.opcode = IROpcode::CallRuntime;
+        getter_call.type = ir_type_for_typeref(field->type);
+        getter_call.result = field_value;
+        getter_call.operands = {getter_name, load_symbol_value("this", IRType::makePointer())};
+        emit(getter_call);
+
+        const bool is_string_field = field->type.name == "String" && !field->type.isArray;
+        if (is_string_field) {
+            json = append_literal(json, "\"");
+            json = append_string(json, field_value);
+            json = append_literal(json, "\"");
+        } else {
+            json = append_string(json, field_value);
+        }
+    }
+    json = append_literal(json, "}");
+
+    emit_all_scope_cleanups({json});
+    IRInstruction ret;
+    ret.opcode = IROpcode::Ret;
+    ret.type = IRType::makeString();
+    ret.operands = {json};
     emit(ret);
 
     scope_stack_.clear();
@@ -1381,6 +1470,29 @@ std::string IRGenerator::visitConditional(const ConditionalExpr& expr) {
 }
 
 std::string IRGenerator::visitCall(const CallExpr& expr) {
+    auto materialize_associative_string = [&](const Expr* source_expr, const std::string& value) -> std::string {
+        if (!source_expr) return value;
+        if (!is_string_semantic_type(analyser_->expressionType(source_expr))) {
+            return value;
+        }
+        if (is_address_value(value)) {
+            return value;
+        }
+
+        std::string stable_slot = new_temporary();
+        emit(IRInstruction::make_alloca(stable_slot, IRType::makeString()));
+        module_.add_external_symbol("string_copy");
+
+        IRInstruction copy_call;
+        copy_call.opcode = IROpcode::CallRuntime;
+        copy_call.type = IRType::makeVoid();
+        copy_call.operands = {"string_copy", "&" + stable_slot, value};
+        emit(copy_call);
+
+        register_owned_value(stable_slot, "string_free", CleanupOperandKind::PassAddress);
+        return "&" + stable_slot;
+    };
+
     if (const auto* ident = dynamic_cast<const IdentifierExpr*>(expr.callee.get())) {
         std::string func_name = ident->name;
 
@@ -1547,10 +1659,14 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
 
                     for (std::size_t i = 0; i + 1 < expr.arguments.size(); i += 2) {
                         module_.add_external_symbol("map_put");
+                        std::string key_value =
+                            materialize_associative_string(expr.arguments[i].get(), args[i + 1]);
+                        std::string mapped_value =
+                            materialize_associative_string(expr.arguments[i + 1].get(), args[i + 2]);
                         IRInstruction put_call;
                         put_call.opcode = IROpcode::CallRuntime;
                         put_call.type = IRType::makePointer();
-                        put_call.operands = {"map_put", result_temp, args[i + 1], args[i + 2]};
+                        put_call.operands = {"map_put", result_temp, key_value, mapped_value};
                         emit(put_call);
                     }
                     return result_temp;
@@ -1855,6 +1971,11 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
         if (!runtime_name.empty()) {
             module_.add_external_symbol(runtime_name);
             std::string result_temp = new_temporary();
+
+            if (runtime_name == "map_put" && expr.arguments.size() >= 2) {
+                args[1] = materialize_associative_string(expr.arguments[0].get(), args[1]);
+                args[2] = materialize_associative_string(expr.arguments[1].get(), args[2]);
+            }
 
             IRInstruction call;
             call.opcode = IROpcode::CallRuntime;

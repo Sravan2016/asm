@@ -88,7 +88,7 @@ bool path_exists(const std::string& path) {
 }
 
 bool is_builtin_class_name(const std::string& name) {
-    return name == "Map" || name == "File" || name == "Thread";
+    return name == "Map" || name == "File" || name == "Thread" || name == "Aleka";
 }
 
 bool looks_like_class_name(const std::string& name) {
@@ -289,6 +289,7 @@ void collect_class_refs_from_program(const Program& program, std::unordered_set<
     for (const auto& cls : program.classes) {
         if (!cls) continue;
         for (const auto& parent : cls->parents) {
+            if (parent.lexeme == "Aleka") continue;
             if (looks_like_class_name(parent.lexeme) && !is_builtin_class_name(parent.lexeme)) {
                 out.insert(parent.lexeme);
             }
@@ -362,6 +363,7 @@ bool collect_module_paths(const std::string& source_file_path,
     for (const auto& cls : program.classes) {
         if (!cls) continue;
         for (const Token& parent : cls->parents) {
+            if (parent.lexeme == "Aleka") continue;
             const std::string parent_path = class_name_to_path(base_dir, parent);
             if (parent_path == source_file_path) continue;
             if (!path_exists(parent_path)) continue;
@@ -431,6 +433,7 @@ bool resolve_imports(Program& program, const std::string& source_file_path, std:
     for (const auto& cls : program.classes) {
         if (!cls) continue;
         for (const Token& parent : cls->parents) {
+            if (parent.lexeme == "Aleka") continue;
             std::string parent_path = class_name_to_path(base_dir, parent);
             if (parent_path == source_file_path) continue;
             if (!path_exists(parent_path)) continue;

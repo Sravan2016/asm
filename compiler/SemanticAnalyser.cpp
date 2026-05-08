@@ -191,6 +191,13 @@ bool SemanticAnalyser::collectDeclarations(const Program& program) {
                 }
                 class_symbol.methods.emplace("of", std::move(of_symbol));
             }
+
+            if (!contains_key(class_symbol.methods, "toString")) {
+                SemanticMethodSymbol to_string_symbol;
+                to_string_symbol.name = "toString";
+                to_string_symbol.return_type = SemanticType::makeString();
+                class_symbol.methods.emplace("toString", std::move(to_string_symbol));
+            }
         }
 
         classes_.emplace(class_symbol.name, std::move(class_symbol));
