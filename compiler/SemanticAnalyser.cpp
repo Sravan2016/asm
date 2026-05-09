@@ -198,6 +198,14 @@ bool SemanticAnalyser::collectDeclarations(const Program& program) {
                 to_string_symbol.return_type = SemanticType::makeString();
                 class_symbol.methods.emplace("toString", std::move(to_string_symbol));
             }
+
+            if (!contains_key(class_symbol.methods, "toObject")) {
+                SemanticMethodSymbol to_object_symbol;
+                to_object_symbol.name = "toObject";
+                to_object_symbol.return_type = SemanticType::makeClass(class_decl.name.lexeme);
+                to_object_symbol.parameter_types.push_back(SemanticType::makeString());
+                class_symbol.methods.emplace("toObject", std::move(to_object_symbol));
+            }
         }
 
         classes_.emplace(class_symbol.name, std::move(class_symbol));

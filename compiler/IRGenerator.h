@@ -30,6 +30,9 @@ private:
     void visitSyntheticAlekaToString(const ClassDecl& cls,
                                      const std::vector<const VariableDeclStmt*>& fields,
                                      const std::vector<std::string>& parents);
+    void visitSyntheticAlekaToObject(const ClassDecl& cls,
+                                     const std::vector<const VariableDeclStmt*>& fields,
+                                     const std::vector<std::string>& parents);
 
     // Statement visitation
     void visitStatementSequence(const std::vector<std::unique_ptr<Stmt>>& statements);

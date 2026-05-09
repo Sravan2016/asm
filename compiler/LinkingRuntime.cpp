@@ -64,7 +64,7 @@ LinkingRuntime::LinkingRuntime(ABIKind abi)
     // Default tool paths (adjust for your environment)
 #ifdef _WIN32
     nasm_path_   = "nasm";
-    gcc_path_    = "gcc";
+    gcc_path_    = "g++";
     runtime_dir_ = "build/asm_pure_obj";
 #else
     nasm_path_   = "nasm";
@@ -256,7 +256,7 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         "array_size", "array_remove", "array_free",
         "array_sort", "array_filter", "array_map", "array_join",
         "array_join_int", "array_join_long", "array_join_double", "array_join_bool",
-        "aleka_create", "aleka_set", "aleka_get", "aleka_free",
+        "aleka_create", "aleka_set", "aleka_get", "aleka_free", "aleka_json_apply",
 
         // Map functions
         "map_init", "map_create", "map_put", "map_get",
@@ -877,26 +877,40 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
             std::string func_name_call = inst.operands[0];
             std::size_t num_args = inst.operands.size() - 1;
             std::size_t max_reg_params = (abi_ == ABIKind::Windows_x64) ? 4 : 6;
+            const std::size_t stack_arg_count = num_args > max_reg_params ? (num_args - max_reg_params) : 0;
 
             if (abi_ == ABIKind::Windows_x64) {
-                out << "    sub rsp, 32  ; shadow space\n";
+                out << "    sub rsp, " << (32 + stack_arg_count * 8) << "  ; shadow space + stack args\n";
             }
 
             // Stack args beyond register limit (in reverse order)
             if (num_args > max_reg_params) {
                 for (std::size_t i = num_args; i > max_reg_params; --i) {
+                    const std::size_t stack_index = i - max_reg_params - 1;
                     auto arg_it = var_map_.find(inst.operands[i]);
                     if (arg_it != var_map_.end() &&
                         runtime_arg_passes_slot_address(func_name_call, i - 1)) {
                         out << "    lea rax, [rbp" << arg_it->second.offset << "]\n";
-                        out << "    push rax\n";
+                        if (abi_ == ABIKind::Windows_x64) {
+                            out << "    mov [rsp+" << (32 + stack_index * 8) << "], rax\n";
+                        } else {
+                            out << "    push rax\n";
+                        }
                     } else if (arg_it != var_map_.end() && arg_it->second.type.kind == IRTypeKind::Pointer) {
                         out << "    mov rax, [rbp" << arg_it->second.offset << "]\n";
                         out << "    mov rax, [rax]\n";
-                        out << "    push rax\n";
+                        if (abi_ == ABIKind::Windows_x64) {
+                            out << "    mov [rsp+" << (32 + stack_index * 8) << "], rax\n";
+                        } else {
+                            out << "    push rax\n";
+                        }
                     } else {
                         emit_move_to_reg_sysv(inst.operands[i], rax, IRType::makePointer(), out);
-                        out << "    push " << rax << "\n";
+                        if (abi_ == ABIKind::Windows_x64) {
+                            out << "    mov [rsp+" << (32 + stack_index * 8) << "], " << rax << "\n";
+                        } else {
+                            out << "    push " << rax << "\n";
+                        }
                     }
                 }
             }
@@ -921,11 +935,11 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
             out << "    call " << func_name_call << "\n";
 
             // Clean up
-            if (num_args > max_reg_params) {
+            if (num_args > max_reg_params && abi_ != ABIKind::Windows_x64) {
                 out << "    add rsp, " << ((num_args - max_reg_params) * 8) << "\n";
             }
             if (abi_ == ABIKind::Windows_x64) {
-                out << "    add rsp, 32  ; clean shadow space\n";
+                out << "    add rsp, " << (32 + stack_arg_count * 8) << "  ; clean shadow space + stack args\n";
             }
 
             if (!inst.result.empty()) {
@@ -1157,6 +1171,7 @@ bool LinkingRuntime::link_executable(const std::string& input_obj_path,
     const std::vector<std::string> runtime_objs = {
         "string.obj", "integer.obj", "array.obj", "boolean.obj",
         "double.obj", "long.obj", "map.obj", "badaapi_ptrs.obj",
+        "aleka.obj",
         "thread.obj", "httpclient.obj", "httpserver.obj",
         "sock.obj"
     };
@@ -1319,6 +1334,7 @@ RuntimeRegistry::RuntimeRegistry() {
       functions_["aleka_set"]    = {"aleka_set",    {"ptr","i64","i64"}, "void", "aleka.obj"};
       functions_["aleka_get"]    = {"aleka_get",    {"ptr","i64"}, "i64", "aleka.obj"};
       functions_["aleka_free"]   = {"aleka_free",   {"ptr"}, "void", "aleka.obj"};
+      functions_["aleka_json_apply"] = {"aleka_json_apply", {"ptr","ptr","ptr","i64"}, "void", "aleka.obj"};
 
       // Map functions
       functions_["map_create"]       = {"map_create",       {"i64","ptr","ptr"}, "ptr",  "map.obj"};

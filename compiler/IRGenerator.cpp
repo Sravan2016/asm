@@ -86,6 +86,22 @@ std::string accessor_suffix_for_field_name(const std::string& field_name) {
     return suffix;
 }
 
+std::uint64_t aleka_json_type_tag(const TypeRef& type_ref) {
+    if (type_ref.isArray) return 0;
+    if (type_ref.name == "Integer") return 1;
+    if (type_ref.name == "Long") return 2;
+    if (type_ref.name == "Double") return 3;
+    if (type_ref.name == "Boolean") return 4;
+    if (type_ref.name == "String") return 5;
+    return 0;
+}
+
+std::uint64_t aleka_json_field_descriptor(std::size_t field_index, const TypeRef& type_ref) {
+    const std::uint64_t type_tag = aleka_json_type_tag(type_ref);
+    if (type_tag == 0) return 0;
+    return (static_cast<std::uint64_t>(field_index) << 8) | type_tag;
+}
+
 std::string find_declaring_class_for_method(
     const std::unordered_map<std::string, SemanticClassSymbol>& classes,
     const std::string& class_name,
@@ -332,6 +348,9 @@ void IRGenerator::visitClass(const ClassDecl& cls) {
         }
         if (!explicit_methods.count("toString")) {
             visitSyntheticAlekaToString(cls, aleka_fields, parents);
+        }
+        if (!explicit_methods.count("toObject")) {
+            visitSyntheticAlekaToObject(cls, aleka_fields, parents);
         }
     }
 }
@@ -682,6 +701,70 @@ void IRGenerator::visitSyntheticAlekaToString(const ClassDecl& cls,
     ret.opcode = IROpcode::Ret;
     ret.type = IRType::makeString();
     ret.operands = {json};
+    emit(ret);
+
+    scope_stack_.clear();
+    owned_values_.clear();
+    value_aliases_.clear();
+}
+
+void IRGenerator::visitSyntheticAlekaToObject(const ClassDecl& cls,
+                                              const std::vector<const VariableDeclStmt*>& fields,
+                                              const std::vector<std::string>& parents) {
+    current_class_name_ = cls.name.lexeme;
+    current_parents_ = parents;
+    symbol_table_.clear();
+    temp_counter_ = 0;
+    owned_values_.clear();
+    value_aliases_.clear();
+    scope_stack_.clear();
+
+    const std::string func_name = cls.name.lexeme + "_toObject";
+    module_.add_function(func_name, IRType::makePointer(), {{"json", IRType::makeString()}});
+    current_function_ = module_.find_function(func_name);
+    IRFunction* func = current_function_;
+    IRParameter this_param{"this", IRType::makePointer()};
+    func->parameters.insert(func->parameters.begin(), this_param);
+
+    func->entry_block();
+    func->set_current_block(0);
+    push_scope();
+
+    for (const auto& param : func->parameters) {
+        std::string addr = new_temporary();
+        emit(IRInstruction::make_alloca(addr, param.type));
+        symbol_table_[param.name] = addr;
+        emit(IRInstruction::make_store(param.name, addr));
+    }
+
+    const std::string this_value = load_symbol_value("this", IRType::makePointer());
+    const std::string json_value = load_symbol_value("json", IRType::makeString());
+    module_.add_external_symbol("aleka_json_apply");
+
+    for (std::size_t i = 0; i < fields.size(); ++i) {
+        const auto* field = fields[i];
+        if (!field) continue;
+
+        const std::uint64_t descriptor = aleka_json_field_descriptor(i, field->type);
+        if (descriptor == 0) continue;
+
+        const std::string descriptor_value = new_temporary();
+        emit(IRInstruction::make_const_int(descriptor_value, static_cast<std::int64_t>(descriptor)));
+
+        const std::string key_value = emit_string_constant(field->name.lexeme, true);
+
+        IRInstruction call;
+        call.opcode = IROpcode::CallRuntime;
+        call.type = IRType::makeVoid();
+        call.operands = {"aleka_json_apply", this_value, json_value, key_value, descriptor_value};
+        emit(call);
+    }
+
+    emit_all_scope_cleanups({this_value});
+    IRInstruction ret;
+    ret.opcode = IROpcode::Ret;
+    ret.type = IRType::makePointer();
+    ret.operands = {this_value};
     emit(ret);
 
     scope_stack_.clear();

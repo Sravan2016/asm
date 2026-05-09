@@ -1,5 +1,4 @@
 from: com.base.Map;
-from: User;
 
 MapWithAleka->
     main{String[] args} -->
@@ -8,8 +7,10 @@ MapWithAleka->
         User user = User.of(1, "Name","mail1", "password", 9182592263l);
         println(user.toString());
         m.put("key4", user.toString());
+        User users = User.of(0, "", "", "", 0l);
         String value = m.get("key4");
-        println("value is : "+value);
+        users.toObject(value);
+        println(users.getId()+" "+users.getUserName()+" "+users.getMailId()+" "+users.getPassword()+" "+users.getPhoneNumber());
         m.containsKey("key3");
         m.remove("key1");
         m.size();
