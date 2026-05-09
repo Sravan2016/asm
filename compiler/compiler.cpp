@@ -12,8 +12,10 @@
 #include <cctype>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <set>
 #include <sstream>
+#include <stdlib.h>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -649,13 +651,13 @@ bool compile_module_to_object(const std::string& path,
                               bool log_outputs,
                               bool emit_entry_point,
                               std::string* out_obj_path) {
-    std::string source;
-    if (!read_file_text(path, &source)) {
+    auto* source = new std::string();
+    if (!read_file_text(path, source)) {
         std::cerr << "Failed to open file\n";
         return false;
     }
 
-    Lexer lexer(source, path);
+    Lexer lexer(*source, path);
     std::vector<Token> tokens = lexer.tokenizeAll();
     if (lexer.hasError()) {
         print_lex_errors(lexer.errors());
@@ -686,20 +688,6 @@ bool compile_module_to_object(const std::string& path,
         return false;
     }
 
-    CollectionLexer collection_lexer;
-    collection_lexer.analyze(program);
-    if (collection_lexer.hasErrors()) {
-        print_collection_errors(collection_lexer.errors());
-        return false;
-    }
-
-    ArrayLexer array_lexer;
-    array_lexer.analyze(program);
-    if (array_lexer.hasErrors()) {
-        print_array_errors(array_lexer.errors());
-        return false;
-    }
-
     IRGenerator ir_gen;
     IRModule ir_module = ir_gen.generate(program, analyser, &emitted_class_names);
 
@@ -711,30 +699,36 @@ bool compile_module_to_object(const std::string& path,
     LinkingRuntime runtime(ABIKind::Windows_x64);
     runtime.set_runtime_dir("build/asm_pure_obj");
 
-    const std::string asm_path = replace_extension(path, ".s");
-    std::ofstream asm_file(asm_path);
+    auto* asm_path_for_write = new std::string(replace_extension(path, ".s"));
+    char full_path[260];
+    _fullpath(full_path, asm_path_for_write->c_str(), 260);
+    *asm_path_for_write = full_path;
+    std::ofstream asm_file(*asm_path_for_write);
     if (!asm_file.is_open()) {
         std::cerr << "Failed to write assembly output" << std::endl;
         return false;
     }
-    std::string assembly_text = runtime.generate_assembly(ir_module, emit_entry_point);
-    assembly_text = strip_unresolved_stubs(assembly_text);
-    assembly_text = strip_internal_externs(assembly_text);
-    asm_file << assembly_text;
+    auto* assembly_text = new std::string(runtime.generate_assembly(ir_module, emit_entry_point));
+    asm_file << *assembly_text;
     asm_file.close();
 
-    const std::string obj_path = replace_extension(asm_path, ".obj");
-    if (!runtime.assemble_to_object(asm_path, obj_path)) {
-        std::cerr << "Failed to generate object: " << obj_path << std::endl;
+    auto* asm_path_for_assemble = new std::string(replace_extension(path, ".s"));
+    _fullpath(full_path, asm_path_for_assemble->c_str(), 260);
+    *asm_path_for_assemble = full_path;
+    auto* obj_path_for_assemble = new std::string(replace_extension(path, ".obj"));
+    _fullpath(full_path, obj_path_for_assemble->c_str(), 260);
+    *obj_path_for_assemble = full_path;
+    if (!runtime.assemble_to_object(*asm_path_for_assemble, *obj_path_for_assemble)) {
+        std::cerr << "Failed to generate object: " << *obj_path_for_assemble << std::endl;
         return false;
     }
 
     if (log_outputs) {
-        std::cerr << "Generated assembly: " << asm_path << std::endl;
-        std::cerr << "Generated object: " << obj_path << std::endl;
+        std::cerr << "Generated assembly: " << *asm_path_for_assemble << std::endl;
+        std::cerr << "Generated object: " << *obj_path_for_assemble << std::endl;
     }
 
-    if (out_obj_path) *out_obj_path = obj_path;
+    if (out_obj_path) *out_obj_path = *obj_path_for_assemble;
     return true;
 }
 

@@ -1,0 +1,21 @@
+from: com.base.Map;
+from: User;
+
+MapWithAleka->
+    main{String[] args} -->
+        Map m = Map.of("key1","value1","key2","value2");
+        m.put("key3","value3");
+        User user = User.of(1, "Name","mail1", "password", 9182592263l);
+        println(user.toString());
+        m.put("key4", user.toString());
+        String value = m.get("key4");
+        println("value is : "+value);
+        m.containsKey("key3");
+        m.remove("key1");
+        m.size();
+        m.isEmpty();
+        println("printing all m values: "+ m.toString());
+        m.clear();
+        println(m.toString());
+    <--
+<-
