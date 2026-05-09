@@ -8,8 +8,7 @@ MapWithAleka->
         println(user.toString());
         m.put("key4", user.toString());
         User users = User.of(0, "", "", "", 0l);
-        String value = m.get("key4");
-        users.toObject(value);
+        users.toObject(m.get("key4"));
         println(users.getId()+" "+users.getUserName()+" "+users.getMailId()+" "+users.getPassword()+" "+users.getPhoneNumber());
         m.containsKey("key3");
         m.remove("key1");

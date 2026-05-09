@@ -12,6 +12,27 @@
 
 namespace {
 
+bool file_exists(const std::string& path) {
+    std::ifstream input(path, std::ios::binary);
+    return static_cast<bool>(input);
+}
+
+std::string join_path(const std::string& base, const std::string& leaf) {
+    if (base.empty()) return leaf;
+    if (base.back() == '/' || base.back() == '\\') return base + leaf;
+    return base + "/" + leaf;
+}
+
+std::string resolve_runtime_object_path(const std::string& runtime_dir, const std::string& obj_name) {
+    const std::string primary = join_path(runtime_dir, obj_name);
+    if (file_exists(primary)) return primary;
+
+    const std::string fallback = join_path(join_path(runtime_dir, "..\\asm_file_obj"), obj_name);
+    if (file_exists(fallback)) return fallback;
+
+    return primary;
+}
+
 bool runtime_arg_passes_slot_address(const std::string& func_name, std::size_t arg_index) {
     if (arg_index == 0) {
         return func_name == "fileint_create_auto" ||
@@ -416,7 +437,7 @@ void LinkingRuntime::emit_function_sysv(const IRFunction& func, std::ostringstre
     for (std::size_t i = 0; i < func.parameters.size(); ++i) {
         const auto& param = func.parameters[i];
         if (abi_ == ABIKind::Windows_x64 && i >= reg_params) {
-            const int stack_arg_offset = 16 + static_cast<int>((i - reg_params) * 8);
+            const int stack_arg_offset = 48 + static_cast<int>((i - reg_params) * 8);
             body << "    mov rax, [rbp+" << stack_arg_offset << "]\n";
             body << "    mov [rbp" << var_map_[param.name].offset << "], rax"
                  << "  ; param '" << param.name << "'\n";
@@ -1177,12 +1198,12 @@ bool LinkingRuntime::link_executable(const std::string& input_obj_path,
     };
 
     for (const auto& obj : runtime_objs) {
-        cmd << " \"" << rdir << "/" << obj << "\"";
+        cmd << " \"" << resolve_runtime_object_path(rdir, obj) << "\"";
     }
 
     // Heap object (from asm_file_obj)
-    cmd << " \"" << rdir << "/../asm_file_obj/readwritefile.obj\"";
-    cmd << " \"" << rdir << "/../asm_file_obj/heap.obj\"";
+    cmd << " \"" << resolve_runtime_object_path(join_path(rdir, "..\\asm_file_obj"), "readwritefile.obj") << "\"";
+    cmd << " \"" << resolve_runtime_object_path(join_path(rdir, "..\\asm_file_obj"), "heap.obj") << "\"";
 
     // Extra objects
     for (const auto& obj : extra_objects) {

@@ -3,12 +3,12 @@
 #include <algorithm>
 #include <cstring>
 
-std::string CodeGenerator::generate(const IRModule& module) {
+std::string CodeGenerator::generate(const IRModule& module, bool emit_entry_point) {
     output_.str("");
     output_.clear();
 
     emit_data_section(module);
-    emit_text_section(module);
+    emit_text_section(module, emit_entry_point);
 
     return output_.str();
 }
@@ -31,7 +31,7 @@ void CodeGenerator::emit_data_section(const IRModule& module) {
     output_ << std::endl;
 }
 
-void CodeGenerator::emit_text_section(const IRModule& module) {
+void CodeGenerator::emit_text_section(const IRModule& module, bool emit_entry_point) {
     output_ << "section .text" << std::endl;
 
     // External symbols
@@ -59,29 +59,33 @@ void CodeGenerator::emit_text_section(const IRModule& module) {
     }
     output_ << std::endl;
 
-    output_ << "    global main" << std::endl;
-    output_ << std::endl;
+    if (emit_entry_point) {
+        output_ << "    global main" << std::endl;
+        output_ << std::endl;
+    }
 
     // Emit each function
     for (const auto& func : module.functions) {
         emit_function(func);
     }
 
-    // Main entry point
-    output_ << "main:" << std::endl;
-    output_ << "    push rbp" << std::endl;
-    output_ << "    mov rbp, rsp" << std::endl;
+    if (emit_entry_point) {
+        // Main entry point
+        output_ << "main:" << std::endl;
+        output_ << "    push rbp" << std::endl;
+        output_ << "    mov rbp, rsp" << std::endl;
 
-    // Call the first function as entry
-    if (!module.functions.empty()) {
-        output_ << "    mov rdi, 0" << std::endl;  // this pointer
-        output_ << "    call " << module.functions[0].name << std::endl;
+        // Call the first function as entry
+        if (!module.functions.empty()) {
+            output_ << "    mov rdi, 0" << std::endl;  // this pointer
+            output_ << "    call " << module.functions[0].name << std::endl;
+        }
+
+        output_ << "    mov rax, 0" << std::endl;
+        output_ << "    leave" << std::endl;
+        output_ << "    ret" << std::endl;
+        output_ << std::endl;
     }
-
-    output_ << "    mov rax, 0" << std::endl;
-    output_ << "    leave" << std::endl;
-    output_ << "    ret" << std::endl;
-    output_ << std::endl;
 }
 
 void CodeGenerator::emit_function(const IRFunction& func) {
@@ -110,9 +114,14 @@ void CodeGenerator::emit_function(const IRFunction& func) {
         const auto& param = func.parameters[i];
         assign_location(param.name, param.type);
 
-        // Move from register to stack
-        std::string reg = reg_for_param(i);
-        output_ << "    mov [rbp-" << var_locations_[param.name] << "], " << reg << std::endl;
+        if (i < 4) {
+            std::string reg = reg_for_param(i);
+            output_ << "    mov [rbp-" << var_locations_[param.name] << "], " << reg << std::endl;
+        } else {
+            const int stack_arg_offset = 48 + static_cast<int>((i - 4) * 8);
+            output_ << "    mov rax, [rbp+" << stack_arg_offset << "]" << std::endl;
+            output_ << "    mov [rbp-" << var_locations_[param.name] << "], rax" << std::endl;
+        }
     }
 
     // Emit blocks
@@ -435,19 +444,36 @@ void CodeGenerator::emit_instruction(const IRInstruction& inst) {
         case IROpcode::CallRuntime: {
             std::string func_name = inst.operands[0];
 
-            // Allocate shadow space (Windows x64 ABI)
-            output_ << "    sub rsp, 32" << std::endl;
+            const std::size_t num_args = inst.operands.size() > 0 ? inst.operands.size() - 1 : 0;
+            const std::size_t stack_arg_count = num_args > 4 ? num_args - 4 : 0;
+
+            // Allocate shadow space and any stack arguments (Windows x64 ABI)
+            output_ << "    sub rsp, " << (32 + stack_arg_count * 8) << std::endl;
+
+            for (std::size_t i = num_args; i > 4; --i) {
+                const std::size_t stack_index = i - 5;
+                if (!inst.operands[i].empty() && inst.operands[i][0] == '&') {
+                    emit_address_to_reg(inst.operands[i], "rax");
+                } else {
+                    emit_move_to_reg(inst.operands[i], "rax", IRType::makePointer());
+                }
+                output_ << "    mov [rsp+" << (32 + stack_index * 8) << "], rax" << std::endl;
+            }
 
             // Move arguments to registers
             for (std::size_t i = 1; i < inst.operands.size() && i <= 4; ++i) {
                 std::string target_reg = reg_for_param(i - 1);
-                emit_move_to_reg(inst.operands[i], target_reg, IRType::makePointer());
+                if (!inst.operands[i].empty() && inst.operands[i][0] == '&') {
+                    emit_address_to_reg(inst.operands[i], target_reg);
+                } else {
+                    emit_move_to_reg(inst.operands[i], target_reg, IRType::makePointer());
+                }
             }
 
             output_ << "    call " << func_name << std::endl;
 
             // Deallocate shadow space
-            output_ << "    add rsp, 32" << std::endl;
+            output_ << "    add rsp, " << (32 + stack_arg_count * 8) << std::endl;
 
             if (!inst.result.empty()) {
                 var_locations_[inst.result] = std::to_string(local_var_offset_);
@@ -576,14 +602,16 @@ void CodeGenerator::emit_move_to_reg(const std::string& value, const std::string
 }
 
 void CodeGenerator::emit_address_to_reg(const std::string& value, const std::string& reg) {
-    auto it = var_locations_.find(value);
+    const std::string base_value = (!value.empty() && value[0] == '&') ? value.substr(1) : value;
+
+    auto it = var_locations_.find(base_value);
     if (it != var_locations_.end()) {
         output_ << "    lea " << reg << ", [rbp-" << it->second << "]" << std::endl;
         return;
     }
 
-    if (value.find("str_") == 0) {
-        output_ << "    lea " << reg << ", [rel " << value << "]" << std::endl;
+    if (base_value.find("str_") == 0) {
+        output_ << "    lea " << reg << ", [rel " << base_value << "]" << std::endl;
         return;
     }
 

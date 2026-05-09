@@ -9,11 +9,11 @@
 
 class CodeGenerator {
 public:
-    std::string generate(const IRModule& module);
+    std::string generate(const IRModule& module, bool emit_entry_point = true);
 
 private:
     void emit_data_section(const IRModule& module);
-    void emit_text_section(const IRModule& module);
+    void emit_text_section(const IRModule& module, bool emit_entry_point);
     void emit_function(const IRFunction& func);
     void emit_block(const IRBasicBlock& block);
     void emit_instruction(const IRInstruction& inst);

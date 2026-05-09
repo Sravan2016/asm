@@ -885,6 +885,7 @@ void IRGenerator::visitPrintStmt(const PrintStmt& stmt) {
 
     IRType type = get_expr_type(*stmt.expression);
     std::string val = visitExpression(*stmt.expression);
+    const std::string owned_print_value = preserved_owner_for_return(*stmt.expression, val);
 
     std::string runtime_func = (type.kind == IRTypeKind::String || type.kind == IRTypeKind::Pointer)
         ? "print_string" : "print_uint";
@@ -916,6 +917,14 @@ void IRGenerator::visitPrintStmt(const PrintStmt& stmt) {
         nl_call.type = IRType::makeVoid();
         nl_call.operands = {"print_string", nl_val};
         emit(nl_call);
+    }
+
+    if (!owned_print_value.empty()) {
+        auto owned_it = owned_values_.find(owned_print_value);
+        if (owned_it != owned_values_.end()) {
+            emit_cleanup(owned_it->first, owned_it->second);
+            owned_values_.erase(owned_it);
+        }
     }
 }
 
@@ -1576,6 +1585,30 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
         return "&" + stable_slot;
     };
 
+    auto materialize_expected_string = [&](const Expr* source_expr,
+                                           const std::string& value,
+                                           const SemanticType& expected_type) -> std::string {
+        if (!is_string_semantic_type(expected_type)) {
+            return value;
+        }
+        if (is_address_value(value)) {
+            return value;
+        }
+
+        std::string stable_slot = new_temporary();
+        emit(IRInstruction::make_alloca(stable_slot, IRType::makeString()));
+        module_.add_external_symbol("string_copy");
+
+        IRInstruction copy_call;
+        copy_call.opcode = IROpcode::CallRuntime;
+        copy_call.type = IRType::makeVoid();
+        copy_call.operands = {"string_copy", "&" + stable_slot, value};
+        emit(copy_call);
+
+        register_owned_value(stable_slot, "string_free", CleanupOperandKind::PassAddress);
+        return "&" + stable_slot;
+    };
+
     if (const auto* ident = dynamic_cast<const IdentifierExpr*>(expr.callee.get())) {
         std::string func_name = ident->name;
 
@@ -1656,6 +1689,11 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                 }
             }
             args.push_back(visitExpression(*arg));
+        }
+
+        for (std::size_t i = 0; i < expr.arguments.size() && i < parameter_types.size(); ++i) {
+            args[i + (owner_class.empty() ? 0 : 1)] =
+                materialize_expected_string(expr.arguments[i].get(), args[i + (owner_class.empty() ? 0 : 1)], parameter_types[i]);
         }
 
         std::string result_temp = new_temporary();
@@ -2076,6 +2114,11 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
             auto target_class = analyser_->classes().find(object_sem_type.name);
             if (target_class != analyser_->classes().end() &&
                 target_class->second.methods.find(member->member.lexeme) != target_class->second.methods.end()) {
+                const auto& method_symbol = target_class->second.methods.find(member->member.lexeme)->second;
+                for (std::size_t i = 0; i < expr.arguments.size() && i < method_symbol.parameter_types.size(); ++i) {
+                    args[i + 1] = materialize_expected_string(
+                        expr.arguments[i].get(), args[i + 1], method_symbol.parameter_types[i]);
+                }
                 std::string result_temp = new_temporary();
                 std::string mangled = object_sem_type.name + "_" + member->member.lexeme;
                 module_.add_external_symbol(mangled);
@@ -2089,6 +2132,10 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                     call.operands.push_back(a);
                 }
                 emit(call);
+                OwnedValueInfo cleanup = cleanup_info_for_ir_type(ret_type, false);
+                if (!cleanup.runtime_func.empty()) {
+                    register_owned_value(result_temp, cleanup.runtime_func, cleanup.operand_kind);
+                }
                 return result_temp;
             }
         }
@@ -2097,6 +2144,7 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
             auto target_class = analyser_->classes().find(object_ident->name);
             if (target_class != analyser_->classes().end() &&
                 target_class->second.methods.find(member->member.lexeme) != target_class->second.methods.end()) {
+                const auto& method_symbol = target_class->second.methods.find(member->member.lexeme)->second;
                 std::vector<std::string> args;
                 std::string null_this = new_temporary();
                 IRInstruction zero_this;
@@ -2105,8 +2153,13 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                 zero_this.result = null_this;
                 emit(zero_this);
                 args.push_back(null_this);
-                for (const auto& arg : expr.arguments) {
-                    args.push_back(visitExpression(*arg));
+                for (std::size_t i = 0; i < expr.arguments.size(); ++i) {
+                    std::string arg_value = visitExpression(*expr.arguments[i]);
+                    if (i < method_symbol.parameter_types.size()) {
+                        arg_value = materialize_expected_string(
+                            expr.arguments[i].get(), arg_value, method_symbol.parameter_types[i]);
+                    }
+                    args.push_back(arg_value);
                 }
 
                 std::string result_temp = new_temporary();
@@ -2123,6 +2176,10 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                     call.operands.push_back(a);
                 }
                 emit(call);
+                OwnedValueInfo cleanup = cleanup_info_for_ir_type(ret_type, false);
+                if (!cleanup.runtime_func.empty()) {
+                    register_owned_value(result_temp, cleanup.runtime_func, cleanup.operand_kind);
+                }
                 return result_temp;
             }
         }

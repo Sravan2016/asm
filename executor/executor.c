@@ -184,7 +184,8 @@ int main(int argc, char** argv) {
     const char* pure_objs[] = {
         "string.obj", "integer.obj", "array.obj", "boolean.obj",
         "double.obj", "httpclient.obj", "httpserver.obj",
-        "long.obj", "map.obj", "sock.obj", "thread.obj", "badaapi_ptrs.obj"
+        "long.obj", "map.obj", "sock.obj", "thread.obj", "badaapi_ptrs.obj",
+        "aleka.obj"
     };
 
     command[0] = '\0';
@@ -213,6 +214,9 @@ int main(int argc, char** argv) {
 
     for (i = 0; i < (int)(sizeof(pure_objs) / sizeof(pure_objs[0])); ++i) {
         join_path(pure_dir, pure_objs[i], path_buf, sizeof(path_buf));
+        if (!file_exists(path_buf)) {
+            join_path(heap_dir, pure_objs[i], path_buf, sizeof(path_buf));
+        }
         append_quoted(command, sizeof(command), path_buf);
     }
 
@@ -234,7 +238,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (system("cmd /c .\\bada_run.exe") != 0) {
+    if (system(".\\bada_run.exe") != 0) {
         fprintf(stderr, "executor_asm: run failed\n");
         return 1;
     }

@@ -401,6 +401,7 @@ filestring_create_from_cstr:
     call strlen_asm
     mov r14, rax
 
+    call ensure_kernel32
     mov rcx, r12
     mov rdx, GENERIC_READ
     or rdx, GENERIC_WRITE
@@ -409,7 +410,6 @@ filestring_create_from_cstr:
     mov qword ptr [rsp + 32], CREATE_ALWAYS
     mov qword ptr [rsp + 40], FILE_ATTRIBUTE_NORMAL
     mov qword ptr [rsp + 48], 0
-    call ensure_kernel32
     call qword ptr [rip + pCreateFileA]
     cmp rax, INVALID_HANDLE_VALUE
     je .create_fail
@@ -458,6 +458,7 @@ filestring_open:
     sub rsp, 56
     mov rbx, rcx
     mov r12, rdx
+    call ensure_kernel32
     mov rcx, r12
     mov rdx, GENERIC_READ
     or rdx, GENERIC_WRITE
@@ -466,7 +467,6 @@ filestring_open:
     mov qword ptr [rsp + 32], OPEN_EXISTING
     mov qword ptr [rsp + 40], FILE_ATTRIBUTE_NORMAL
     mov qword ptr [rsp + 48], 0
-    call ensure_kernel32
     call qword ptr [rip + pCreateFileA]
     cmp rax, INVALID_HANDLE_VALUE
     je .open_fail
@@ -511,11 +511,11 @@ string_char_at:
     mov r12, rdx
     cmp r12, [rbx + 8]
     jae .char_fail
+    call ensure_kernel32
     mov rcx, [rbx]
     mov rdx, r12
     xor r8, r8
     mov r9d, FILE_BEGIN
-    call ensure_kernel32
     call qword ptr [rip + pSetFilePointerEx]
     mov rcx, [rbx]
     lea rdx, [rsp + 47]
@@ -551,11 +551,11 @@ filestring_write_at:
     mov r12, rdx
     mov r13, r8
     mov r14, r9
+    call ensure_kernel32
     mov rcx, [rbx]
     mov rdx, r12
     xor r8, r8
     mov r9d, FILE_BEGIN
-    call ensure_kernel32
     call qword ptr [rip + pSetFilePointerEx]
     mov dword ptr [rip + last_write_at_seek_ret], eax
     mov rcx, [rbx]
@@ -1697,6 +1697,7 @@ filestring_close:
     jz .close_done
     sub rsp, 32
     call ensure_kernel32
+    mov rcx, [rbx]
     call qword ptr [rip + pCloseHandle]
     add rsp, 32
     mov qword ptr [rbx], 0
@@ -1726,6 +1727,7 @@ string_free:
     call filestring_close
     mov rcx, r12
     call ensure_kernel32
+    mov rcx, r12
     call qword ptr [rip + pDeleteFileA]
     add rsp, 136
     pop r12
@@ -1738,11 +1740,13 @@ string_copy:
     push r12
     push r13
     push r14
-    sub rsp, 40
+    sub rsp, 56
     mov rbx, rcx
     mov r12, rdx
+    mov [rsp + 48], r12
     lea rdx, [rip + msg_nl + 1] # empty cstr
     call string_from_cstr
+    mov r12, [rsp + 48]
     mov r13, [r12 + 8]
     mov qword ptr [rbx + 8], r13
     xor r14, r14
@@ -1759,7 +1763,7 @@ string_copy:
     inc r14
     jmp .copy_loop
 .copy_done:
-    add rsp, 40
+    add rsp, 56
     pop r14
     pop r13
     pop r12
@@ -2069,20 +2073,26 @@ string_ends_with:
 
 write_buf:
     # rcx=buf, rdx=len
-    mov r8, rdx
-    mov rdx, rcx
+    push rbx
+    push r12
+    mov rbx, rcx
+    mov r12, rdx
+    sub rsp, 56
+    call ensure_kernel32
     lea rax, [rip + stdout_handle]
     mov rcx, [rax]
-    sub rsp, 56
+    mov rdx, rbx
+    mov r8, r12
     lea r9, [rsp + 40]
     mov qword ptr [rsp + 32], 0
-    call ensure_kernel32
     mov rax, qword ptr [rip + pWriteFile]
     test rax, rax
     jz 1f
     call rax
 1:
     add rsp, 56
+    pop r12
+    pop rbx
     ret
 
 print_cstr:
