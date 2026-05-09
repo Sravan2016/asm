@@ -1,5 +1,7 @@
 #include <cstdint>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 extern "C" {
@@ -53,9 +55,27 @@ bool expect_true(const char* name, bool condition) {
     return condition;
 }
 
+std::string aleka_path_for_object(const void* object) {
+    static constexpr char hex[] = "0123456789ABCDEF";
+    auto value = reinterpret_cast<std::uintptr_t>(object);
+    std::string path = "aleka_";
+    for (int i = 15; i >= 0; --i) {
+        path.push_back(hex[(value >> (i * 4)) & 0x0f]);
+    }
+    path += ".bin";
+    return path;
+}
+
+bool file_exists(const std::string& path) {
+    std::ifstream input(path, std::ios::binary);
+    return static_cast<bool>(input);
+}
+
 bool positive_storage_roundtrip() {
     void* object = aleka_create(3);
+    const std::string path = aleka_path_for_object(object);
     bool ok = expect_true("create returns object", object != nullptr);
+    ok &= expect_true("create writes aleka file", file_exists(path));
     aleka_set(object, 0, 42);
     aleka_set(object, 1, 9182592263ULL);
     aleka_set(object, 2, 1);
@@ -63,6 +83,7 @@ bool positive_storage_roundtrip() {
     ok &= expect_true("long slot roundtrip", aleka_get(object, 1) == 9182592263ULL);
     ok &= expect_true("boolean slot roundtrip", aleka_get(object, 2) == 1);
     aleka_free(object);
+    ok &= expect_true("free deletes aleka file", !file_exists(path));
     return ok;
 }
 

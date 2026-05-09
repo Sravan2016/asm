@@ -13,10 +13,30 @@
 .extern string_from_cstr
 .extern string_length
 .extern string_char_at
+.extern pCreateFileA
+.extern pReadFile
+.extern pWriteFile
+.extern pSetFilePointerEx
+.extern pCloseHandle
+.extern pDeleteFileA
 
-# In-memory Aleka object:
-# [0] field_count qword
-# [8] first slot qword
+.equ GENERIC_READ, 0x80000000
+.equ GENERIC_WRITE, 0x40000000
+.equ FILE_SHARE_READ, 1
+.equ CREATE_ALWAYS, 2
+.equ FILE_ATTRIBUTE_NORMAL, 0x00000080
+.equ FILE_BEGIN, 0
+.equ INVALID_HANDLE_VALUE, -1
+
+.section .data
+hex_digits: .asciz "0123456789ABCDEF"
+
+.section .text
+
+# File-backed Aleka object:
+# [0]  file handle qword
+# [8]  field_count qword
+# [16] path buffer: "aleka_" + 16 hex chars + ".bin" + NUL
 
 is_space:
     cmp al, 32
@@ -438,59 +458,183 @@ parse_slot_value:
 .ps_string:
     jmp make_string_from_span
 
+make_aleka_path:
+    # rcx=object, rdx=out path
+    mov byte ptr [rdx], 'a'
+    mov byte ptr [rdx + 1], 'l'
+    mov byte ptr [rdx + 2], 'e'
+    mov byte ptr [rdx + 3], 'k'
+    mov byte ptr [rdx + 4], 'a'
+    mov byte ptr [rdx + 5], '_'
+    mov rax, rcx
+    lea r10, [rip + hex_digits]
+    mov r11, 16
+    lea r8, [rdx + 6]
+.map_hex:
+    rol rax, 4
+    mov r9, rax
+    and r9, 0x0f
+    mov r9b, byte ptr [r10 + r9]
+    mov byte ptr [r8], r9b
+    inc r8
+    dec r11
+    jnz .map_hex
+    mov byte ptr [rdx + 22], '.'
+    mov byte ptr [rdx + 23], 'b'
+    mov byte ptr [rdx + 24], 'i'
+    mov byte ptr [rdx + 25], 'n'
+    mov byte ptr [rdx + 26], 0
+    ret
+
+aleka_seek_slot:
+    # rcx=object, rdx=index -> rax=1/0
+    push rbx
+    sub rsp, 32
+    mov rbx, rcx
+    mov rax, rdx
+    shl rax, 3
+    mov rcx, [rbx]
+    mov rdx, rax
+    xor r8, r8
+    mov r9d, FILE_BEGIN
+    call qword ptr [rip + pSetFilePointerEx]
+    add rsp, 32
+    pop rbx
+    ret
+
 aleka_create:
     # rcx=field_count -> rax=object
     push rbp
     mov rbp, rsp
     push rbx
-    sub rsp, 40
+    sub rsp, 80
     mov rbx, rcx
-    lea rcx, [rbx * 8 + 8]
+    mov rcx, 48
     call bada_mem_alloc
     test rax, rax
-    jz .ac_exit
-    mov [rax], rbx
-    xor r10, r10
-.ac_zero:
-    cmp r10, rbx
-    jae .ac_exit
-    mov qword ptr [rax + 8 + r10 * 8], 0
-    inc r10
-    jmp .ac_zero
+    jz .ac_fail
+    mov r10, rbx
+    mov rbx, rax
+    mov qword ptr [rbx], INVALID_HANDLE_VALUE
+    mov [rbx + 8], r10
+    mov rcx, rbx
+    lea rdx, [rbx + 16]
+    call make_aleka_path
+    lea rcx, [rbx + 16]
+    mov rdx, GENERIC_READ
+    or rdx, GENERIC_WRITE
+    mov r8, FILE_SHARE_READ
+    xor r9, r9
+    mov qword ptr [rsp + 32], CREATE_ALWAYS
+    mov qword ptr [rsp + 40], FILE_ATTRIBUTE_NORMAL
+    mov qword ptr [rsp + 48], 0
+    call qword ptr [rip + pCreateFileA]
+    cmp rax, INVALID_HANDLE_VALUE
+    je .ac_file_fail
+    mov [rbx], rax
+    mov rax, rbx
+    jmp .ac_exit
+.ac_file_fail:
+    mov rcx, rbx
+    call bada_mem_free
+.ac_fail:
+    xor rax, rax
 .ac_exit:
-    add rsp, 40
+    add rsp, 80
     pop rbx
     pop rbp
     ret
 
 aleka_set:
     # rcx=object, rdx=index, r8=value
+    push rbx
+    push r12
+    push r13
+    sub rsp, 80
     test rcx, rcx
     jz .as_ret
-    cmp rdx, [rcx]
+    mov rbx, rcx
+    mov r12, rdx
+    mov r13, r8
+    cmp r12, [rbx + 8]
     jae .as_ret
-    mov [rcx + 8 + rdx * 8], r8
+    mov rcx, rbx
+    mov rdx, r12
+    call aleka_seek_slot
+    test rax, rax
+    jz .as_ret
+    mov [rsp + 56], r13
+    mov rcx, [rbx]
+    lea rdx, [rsp + 56]
+    mov r8d, 8
+    lea r9, [rsp + 64]
+    mov qword ptr [rsp + 32], 0
+    call qword ptr [rip + pWriteFile]
 .as_ret:
+    add rsp, 80
+    pop r13
+    pop r12
+    pop rbx
     ret
 
 aleka_get:
     # rcx=object, rdx=index -> rax=value
+    push rbx
+    push r12
+    sub rsp, 56
     test rcx, rcx
     jz .ag_zero
-    cmp rdx, [rcx]
+    mov rbx, rcx
+    mov r12, rdx
+    cmp r12, [rbx + 8]
     jae .ag_zero
-    mov rax, [rcx + 8 + rdx * 8]
-    ret
+    mov rcx, rbx
+    mov rdx, r12
+    call aleka_seek_slot
+    test rax, rax
+    jz .ag_zero
+    mov qword ptr [rsp + 32], 0
+    mov rcx, [rbx]
+    lea rdx, [rsp + 32]
+    mov r8d, 8
+    lea r9, [rsp + 24]
+    mov qword ptr [rsp + 40], 0
+    call qword ptr [rip + pReadFile]
+    test rax, rax
+    jz .ag_zero
+    mov eax, dword ptr [rsp + 24]
+    cmp rax, 8
+    jne .ag_zero
+    mov rax, [rsp + 32]
+    jmp .ag_exit
 .ag_zero:
     xor rax, rax
+.ag_exit:
+    add rsp, 56
+    pop r12
+    pop rbx
     ret
 
 aleka_free:
     # rcx=object
+    push rbx
+    sub rsp, 32
     test rcx, rcx
     jz .af_ret
-    jmp bada_mem_free
+    mov rbx, rcx
+    mov rcx, [rbx]
+    cmp rcx, INVALID_HANDLE_VALUE
+    je .af_delete
+    call qword ptr [rip + pCloseHandle]
+    mov qword ptr [rbx], INVALID_HANDLE_VALUE
+.af_delete:
+    lea rcx, [rbx + 16]
+    call qword ptr [rip + pDeleteFileA]
+    mov rcx, rbx
+    call bada_mem_free
 .af_ret:
+    add rsp, 32
+    pop rbx
     ret
 
 aleka_json_apply:
