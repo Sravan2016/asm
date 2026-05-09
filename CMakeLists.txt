@@ -83,6 +83,16 @@ set_source_files_properties(asm_pure/string_main.cpp PROPERTIES LANGUAGE C)
 set_source_files_properties(asm_pure/string_main.cpp PROPERTIES COMPILE_OPTIONS "-std=gnu11")
 target_link_libraries(string_main PRIVATE ntdll)
 
+add_executable(aleka_main
+        asm_pure/aleka.s
+        asm_pure/string.s
+        asm_pure/badaapi_ptrs.s
+        asm_file/readwritefile.s
+        asm_file/heap.s
+        asm_pure/aleka_main.cpp
+)
+target_link_libraries(aleka_main PRIVATE ntdll)
+
 
 add_executable(bada_symbols
         asm_pure/map.s
