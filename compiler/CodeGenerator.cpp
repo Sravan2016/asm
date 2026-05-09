@@ -446,9 +446,13 @@ void CodeGenerator::emit_instruction(const IRInstruction& inst) {
 
             const std::size_t num_args = inst.operands.size() > 0 ? inst.operands.size() - 1 : 0;
             const std::size_t stack_arg_count = num_args > 4 ? num_args - 4 : 0;
+            std::size_t call_frame_size = 32 + stack_arg_count * 8;
+            if ((call_frame_size % 16) != 0) {
+                call_frame_size += 8;
+            }
 
             // Allocate shadow space and any stack arguments (Windows x64 ABI)
-            output_ << "    sub rsp, " << (32 + stack_arg_count * 8) << std::endl;
+            output_ << "    sub rsp, " << call_frame_size << std::endl;
 
             for (std::size_t i = num_args; i > 4; --i) {
                 const std::size_t stack_index = i - 5;
@@ -473,7 +477,7 @@ void CodeGenerator::emit_instruction(const IRInstruction& inst) {
             output_ << "    call " << func_name << std::endl;
 
             // Deallocate shadow space
-            output_ << "    add rsp, " << (32 + stack_arg_count * 8) << std::endl;
+            output_ << "    add rsp, " << call_frame_size << std::endl;
 
             if (!inst.result.empty()) {
                 var_locations_[inst.result] = std::to_string(local_var_offset_);

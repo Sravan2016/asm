@@ -1,7 +1,10 @@
+from: Userss;
+
 Users:: Aleka ->
     Integer id;
     String userName;
     String mailId;
     String password;
     Long phoneNumber;
+    Userss userss;
 <-

@@ -4,12 +4,20 @@ MapWithAleka->
     main{String[] args} -->
         Map m = Map.of("key1","value1","key2","value2");
         m.put("key3","value3");
-        User user = User.of(1, "Name","mail1", "password", 9182592263l);
+        Usersss usersss = Usersss.of(3, "Name","mail1", "password1", 9182592263l);
+        Userss userss = Userss.of(2, "Name1","mail", "password1", 9182592263l, usersss);
+        Users users = Users.of(4, "Name1","mail", "password", 9182592264l, userss);
+        User user = User.of(1, "Name","mail1", "password", 9182592263l, users);
         println(user.toString());
         m.put("key4", user.toString());
-        User users = User.of(0, "", "", "", 0l);
-        users.toObject(m.get("key4"));
-        println(users.getId()+" "+users.getUserName()+" "+users.getMailId()+" "+users.getPassword()+" "+users.getPhoneNumber());
+        Usersss parsedUsersss = Usersss.of(0, "", "", "", 0l);
+        Userss parsedUserss = Userss.of(0, "", "", "", 0l, parsedUsersss);
+        Users parsedUsers = Users.of(0, "", "", "", 0l, parsedUserss);
+        User parsedUser = User.of(0, "", "", "", 0l, parsedUsers);
+        parsedUser.toObject(m.get("key4"));
+        println(parsedUser.getId()+" "+parsedUser.getUserName()+" "+parsedUser.getMailId()+" "+parsedUser.getPassword()+" "+parsedUser.getPhoneNumber());
+        println(parsedUser.getUsers().getId())
+        println(parsedUser.toString());
         m.containsKey("key3");
         m.remove("key1");
         m.size();

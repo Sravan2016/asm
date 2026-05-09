@@ -114,7 +114,40 @@ bool extract_json_value_span(const char* text,
         }
 
         const std::size_t start_index = cursor;
-        while (cursor < length && text[cursor] != ',' && text[cursor] != '}') {
+        int depth = 0;
+        bool in_string = false;
+        while (cursor < length) {
+            const char current = text[cursor];
+            if (in_string) {
+                if (current == '\\' && cursor + 1 < length) {
+                    cursor += 2;
+                    continue;
+                }
+                if (current == '"') {
+                    in_string = false;
+                }
+                ++cursor;
+                continue;
+            }
+            if (current == '"') {
+                in_string = true;
+                ++cursor;
+                continue;
+            }
+            if (current == '{' || current == '[') {
+                ++depth;
+                ++cursor;
+                continue;
+            }
+            if (current == '}' || current == ']') {
+                if (depth == 0) break;
+                --depth;
+                ++cursor;
+                continue;
+            }
+            if (current == ',' && depth == 0) {
+                break;
+            }
             ++cursor;
         }
         const std::size_t end_index = trim_right_index(text, start_index, cursor);
@@ -325,6 +358,41 @@ void aleka_json_apply(void* object,
     const std::uint64_t value = parse_json_slot_value(json_buffer + offset, value_length, type, quoted_value);
     bada_mem_free(json_buffer);
     aleka_set(object, index, value);
+}
+
+void aleka_json_extract(const AsmString* json, const char* key, AsmString* out) {
+    if (!json || !key || !out) {
+        return;
+    }
+
+    const auto json_length = static_cast<std::size_t>(string_length(json));
+    auto* json_buffer = static_cast<char*>(bada_mem_alloc(json_length + 1));
+    if (!json_buffer) {
+        return;
+    }
+    for (std::size_t i = 0; i < json_length; ++i) {
+        json_buffer[i] = static_cast<char>(string_char_at(json, i));
+    }
+    json_buffer[json_length] = '\0';
+
+    const char* value_start = nullptr;
+    std::size_t value_length = 0;
+    bool quoted_value = false;
+    if (!extract_json_value_span(json_buffer, key, &value_start, &value_length, &quoted_value)) {
+        bada_mem_free(json_buffer);
+        return;
+    }
+
+    auto* value_buffer = static_cast<char*>(bada_mem_alloc(value_length + 1));
+    if (!value_buffer) {
+        bada_mem_free(json_buffer);
+        return;
+    }
+    std::memcpy(value_buffer, value_start, value_length);
+    value_buffer[value_length] = '\0';
+    string_from_cstr(out, value_buffer);
+    bada_mem_free(value_buffer);
+    bada_mem_free(json_buffer);
 }
 
 }

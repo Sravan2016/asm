@@ -277,7 +277,7 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         "array_size", "array_remove", "array_free",
         "array_sort", "array_filter", "array_map", "array_join",
         "array_join_int", "array_join_long", "array_join_double", "array_join_bool",
-        "aleka_create", "aleka_set", "aleka_get", "aleka_free", "aleka_json_apply",
+        "aleka_create", "aleka_set", "aleka_get", "aleka_free", "aleka_json_apply", "aleka_json_extract",
 
         // Map functions
         "map_init", "map_create", "map_put", "map_get",
@@ -899,9 +899,13 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
             std::size_t num_args = inst.operands.size() - 1;
             std::size_t max_reg_params = (abi_ == ABIKind::Windows_x64) ? 4 : 6;
             const std::size_t stack_arg_count = num_args > max_reg_params ? (num_args - max_reg_params) : 0;
+            std::size_t call_frame_size = 32 + stack_arg_count * 8;
+            if (abi_ == ABIKind::Windows_x64 && (call_frame_size % 16) != 0) {
+                call_frame_size += 8;
+            }
 
             if (abi_ == ABIKind::Windows_x64) {
-                out << "    sub rsp, " << (32 + stack_arg_count * 8) << "  ; shadow space + stack args\n";
+                out << "    sub rsp, " << call_frame_size << "  ; shadow space + stack args\n";
             }
 
             // Stack args beyond register limit (in reverse order)
@@ -912,14 +916,6 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
                     if (arg_it != var_map_.end() &&
                         runtime_arg_passes_slot_address(func_name_call, i - 1)) {
                         out << "    lea rax, [rbp" << arg_it->second.offset << "]\n";
-                        if (abi_ == ABIKind::Windows_x64) {
-                            out << "    mov [rsp+" << (32 + stack_index * 8) << "], rax\n";
-                        } else {
-                            out << "    push rax\n";
-                        }
-                    } else if (arg_it != var_map_.end() && arg_it->second.type.kind == IRTypeKind::Pointer) {
-                        out << "    mov rax, [rbp" << arg_it->second.offset << "]\n";
-                        out << "    mov rax, [rax]\n";
                         if (abi_ == ABIKind::Windows_x64) {
                             out << "    mov [rsp+" << (32 + stack_index * 8) << "], rax\n";
                         } else {
@@ -960,7 +956,7 @@ void LinkingRuntime::emit_instruction_sysv(const IRInstruction& inst,
                 out << "    add rsp, " << ((num_args - max_reg_params) * 8) << "\n";
             }
             if (abi_ == ABIKind::Windows_x64) {
-                out << "    add rsp, " << (32 + stack_arg_count * 8) << "  ; clean shadow space + stack args\n";
+                out << "    add rsp, " << call_frame_size << "  ; clean shadow space + stack args\n";
             }
 
             if (!inst.result.empty()) {
@@ -1356,6 +1352,7 @@ RuntimeRegistry::RuntimeRegistry() {
       functions_["aleka_get"]    = {"aleka_get",    {"ptr","i64"}, "i64", "aleka.obj"};
       functions_["aleka_free"]   = {"aleka_free",   {"ptr"}, "void", "aleka.obj"};
       functions_["aleka_json_apply"] = {"aleka_json_apply", {"ptr","ptr","ptr","i64"}, "void", "aleka.obj"};
+      functions_["aleka_json_extract"] = {"aleka_json_extract", {"ptr","ptr","ptr"}, "void", "aleka.obj"};
 
       // Map functions
       functions_["map_create"]       = {"map_create",       {"i64","ptr","ptr"}, "ptr",  "map.obj"};

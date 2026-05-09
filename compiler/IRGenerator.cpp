@@ -79,6 +79,16 @@ bool has_parent_name(const ClassDecl& cls, const std::string& parent_name) {
     return false;
 }
 
+bool is_aleka_class_type(const SemanticAnalyser* analyser, const TypeRef& type_ref) {
+    if (!analyser || type_ref.isArray) return false;
+    auto it = analyser->classes().find(type_ref.name);
+    if (it == analyser->classes().end()) return false;
+    for (const auto& parent : it->second.parents) {
+        if (parent == "Aleka") return true;
+    }
+    return false;
+}
+
 std::string accessor_suffix_for_field_name(const std::string& field_name) {
     if (field_name.empty()) return field_name;
     std::string suffix = field_name;
@@ -686,10 +696,23 @@ void IRGenerator::visitSyntheticAlekaToString(const ClassDecl& cls,
         emit(getter_call);
 
         const bool is_string_field = field->type.name == "String" && !field->type.isArray;
+        const bool is_nested_aleka_field = is_aleka_class_type(analyser_, field->type);
         if (is_string_field) {
             json = append_literal(json, "\"");
             json = append_string(json, field_value);
             json = append_literal(json, "\"");
+        } else if (is_nested_aleka_field) {
+            const std::string nested_to_string = field->type.name + "_toString";
+            module_.add_external_symbol(nested_to_string);
+            std::string nested_json = new_temporary();
+            IRInstruction nested_call;
+            nested_call.opcode = IROpcode::CallRuntime;
+            nested_call.type = IRType::makeString();
+            nested_call.result = nested_json;
+            nested_call.operands = {nested_to_string, field_value};
+            emit(nested_call);
+            register_owned_value(nested_json, "string_free", CleanupOperandKind::DirectValue);
+            json = append_string(json, nested_json);
         } else {
             json = append_string(json, field_value);
         }
@@ -744,6 +767,39 @@ void IRGenerator::visitSyntheticAlekaToObject(const ClassDecl& cls,
     for (std::size_t i = 0; i < fields.size(); ++i) {
         const auto* field = fields[i];
         if (!field) continue;
+
+        if (is_aleka_class_type(analyser_, field->type)) {
+            const std::string key_value = emit_string_constant(field->name.lexeme, true);
+            const std::string nested_json_slot = new_temporary();
+            emit(IRInstruction::make_alloca(nested_json_slot, IRType::makeString()));
+            module_.add_external_symbol("aleka_json_extract");
+            IRInstruction extract_call;
+            extract_call.opcode = IROpcode::CallRuntime;
+            extract_call.type = IRType::makeVoid();
+            extract_call.operands = {"aleka_json_extract", json_value, key_value, "&" + nested_json_slot};
+            emit(extract_call);
+            register_owned_value(nested_json_slot, "string_free", CleanupOperandKind::PassAddress);
+
+            const std::string getter_name = cls.name.lexeme + "_get" + accessor_suffix_for_field_name(field->name.lexeme);
+            module_.add_external_symbol(getter_name);
+            std::string nested_object = new_temporary();
+            IRInstruction getter_call;
+            getter_call.opcode = IROpcode::CallRuntime;
+            getter_call.type = IRType::makePointer();
+            getter_call.result = nested_object;
+            getter_call.operands = {getter_name, this_value};
+            emit(getter_call);
+
+            const std::string nested_to_object = field->type.name + "_toObject";
+            module_.add_external_symbol(nested_to_object);
+            IRInstruction nested_apply;
+            nested_apply.opcode = IROpcode::CallRuntime;
+            nested_apply.type = IRType::makePointer();
+            nested_apply.result = new_temporary();
+            nested_apply.operands = {nested_to_object, nested_object, "&" + nested_json_slot};
+            emit(nested_apply);
+            continue;
+        }
 
         const std::uint64_t descriptor = aleka_json_field_descriptor(i, field->type);
         if (descriptor == 0) continue;

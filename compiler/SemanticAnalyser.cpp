@@ -115,6 +115,16 @@ bool SemanticAnalyser::collectDeclarations(const Program& program) {
             class_symbol.parents.push_back(parent.lexeme);
         }
 
+        classes_.emplace(class_symbol.name, std::move(class_symbol));
+    }
+
+    for (const auto& class_decl_ptr : program.classes) {
+        if (!class_decl_ptr) continue;
+        const ClassDecl& class_decl = *class_decl_ptr;
+        auto class_it = classes_.find(class_decl.name.lexeme);
+        if (class_it == classes_.end()) continue;
+        SemanticClassSymbol& class_symbol = class_it->second;
+
         for (const ClassMember& member : class_decl.members) {
             if (member.kind == ClassMember::Kind::Statement && member.statement &&
                 member.statement->kind == StmtKind::VariableDecl) {
@@ -207,8 +217,6 @@ bool SemanticAnalyser::collectDeclarations(const Program& program) {
                 class_symbol.methods.emplace("toObject", std::move(to_object_symbol));
             }
         }
-
-        classes_.emplace(class_symbol.name, std::move(class_symbol));
     }
 
     return errors_.empty();
