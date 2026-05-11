@@ -93,6 +93,60 @@ add_executable(aleka_main
 )
 target_link_libraries(aleka_main PRIVATE ntdll)
 
+add_executable(ArrayLexer_main
+        compiler_asm/ArrayLexer.s
+        compiler_asm/ArrayLexer_main.cpp
+)
+
+add_executable(CodeGenerator_main
+        compiler_asm/CodeGenerator.s
+        compiler_asm/CodeGenerator_main.cpp
+)
+
+add_executable(CollectionLexer_main
+        compiler_asm/CollectionLexer.s
+        compiler_asm/CollectionLexer_main.cpp
+)
+
+add_executable(IR_main
+        compiler_asm/IR.s
+        compiler_asm/IR_main.cpp
+)
+
+add_executable(IRGenerator_main
+        compiler_asm/IRGenerator.s
+        compiler_asm/IRGenerator_main.cpp
+)
+
+add_executable(Lexer_main
+        compiler_asm/Lexer.s
+        compiler_asm/Lexer_main.cpp
+)
+
+add_executable(LinkingRuntime_main
+        compiler_asm/LinkingRuntime.s
+        compiler_asm/LinkingRuntime_main.cpp
+)
+
+add_executable(Parser_main
+        compiler_asm/Parser.s
+        compiler_asm/Parser_main.cpp
+)
+
+add_executable(SemanticAnalyser_main
+        compiler_asm/SemanticAnalyser.s
+        compiler_asm/SemanticAnalyser_main.cpp
+)
+
+add_executable(Compiler_main
+        compiler_asm/Compiler.s
+        compiler_asm/Compiler_main.cpp
+)
+
+add_executable(CollectionAnalyser_main
+        compiler_asm/CollectionAnalyser.s
+        compiler_asm/CollectionAnalyser_main.cpp
+)
 
 add_executable(bada_symbols
         asm_pure/map.s

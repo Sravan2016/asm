@@ -16,7 +16,9 @@ MapWithAleka->
         User parsedUser = User.of(0, "", "", "", 0l, parsedUsers);
         parsedUser.toObject(m.get("key4"));
         println(parsedUser.getId()+" "+parsedUser.getUserName()+" "+parsedUser.getMailId()+" "+parsedUser.getPassword()+" "+parsedUser.getPhoneNumber());
-        println(parsedUser.getUsers().getId())
+        println(parsedUser.getUsers().getId());
+        println(parsedUser.getUsers().getUserss().getId());
+        println(parsedUser.getUsers().getUserss().getUsersss().getId());
         println(parsedUser.toString());
         m.containsKey("key3");
         m.remove("key1");
