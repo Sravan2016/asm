@@ -1,0 +1,17 @@
+SampleHttpServer: HttpServer->
+    getsample{Usersss usersss, String password, Integer id} -->
+        println("getsample");
+        usersss.setUserName("Sravan1");
+        usersss.setPassword("Sravan1Pass");
+        println(usersss.toString());
+        println(id+" "+password);
+    [usersss]<--
+
+    getexample{Usersss usersss, String password, Integer id} -->
+            println("getexample");
+            usersss.setUserName("Sravan2");
+            usersss.setPassword("Sravan2Pass");
+            println(usersss.toString());
+            println(id+" "+password);
+    [usersss]<--
+<-

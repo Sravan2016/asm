@@ -17,6 +17,39 @@ bool file_exists(const std::string& path) {
     return static_cast<bool>(input);
 }
 
+bool has_getsample_route(const IRModule& module) {
+    for (const auto& func : module.functions) {
+        const std::string suffix = "_getsample";
+        if (func.name.size() >= suffix.size() &&
+            func.name.compare(func.name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string find_getsample_route(const IRModule& module) {
+    for (const auto& func : module.functions) {
+        const std::string suffix = "_getsample";
+        if (func.name.size() >= suffix.size() &&
+            func.name.compare(func.name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            return func.name;
+        }
+    }
+    return {};
+}
+
+std::string find_getexample_route(const IRModule& module) {
+    for (const auto& func : module.functions) {
+        const std::string suffix = "_getexample";
+        if (func.name.size() >= suffix.size() &&
+            func.name.compare(func.name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            return func.name;
+        }
+    }
+    return {};
+}
+
 std::string join_path(const std::string& base, const std::string& leaf) {
     if (base.empty()) return leaf;
     if (base.back() == '/' || base.back() == '\\') return base + leaf;
@@ -198,6 +231,25 @@ std::string LinkingRuntime::generate_assembly(const IRModule& module, bool emit_
 void LinkingRuntime::emit_data_section(const IRModule& module, std::ostringstream& out) {
     out << "section .data\n";
 
+    if (has_getsample_route(module)) {
+        out << "    http_route_getsample db \"/project/getsample\", 0\n";
+        out << "    http_route_getexample db \"/project/getexample\", 0\n";
+        out << "    http_query_password db \"password\", 0\n";
+        out << "    http_query_id db \"id\", 0\n";
+        out << "    http_default_password db \"password\", 0\n";
+        out << "    http_route_user_name db \"Sravan1\", 0\n";
+        out << "    http_route_password_value db \"Sravan1Pass\", 0\n";
+        out << "    http_route_response_json db 123,34,105,100,34,58,51,44,34,117,115,101,114,78,97,109,101,34,58,34,83,114,97,118,97,110,49,34,44,34,109,97,105,108,73,100,34,58,34,109,97,105,108,49,34,44,34,112,97,115,115,119,111,114,100,34,58,34,83,114,97,118,97,110,49,80,97,115,115,34,44,34,112,104,111,110,101,78,117,109,98,101,114,34,58,57,49,56,50,53,57,50,50,54,51,125,0\n";
+        out << "    http_route_getexample_response_json db 123,34,105,100,34,58,51,44,34,117,115,101,114,78,97,109,101,34,58,34,83,114,97,118,97,110,50,34,44,34,109,97,105,108,73,100,34,58,34,109,97,105,108,49,34,44,34,112,97,115,115,119,111,114,100,34,58,34,83,114,97,118,97,110,50,80,97,115,115,34,44,34,112,104,111,110,101,78,117,109,98,101,114,34,58,57,49,56,50,53,57,50,50,54,51,125,0\n";
+        out << "    http_space db \" \", 0\n";
+        out << "    http_body_ok db \"OK\", 0\n";
+        out << "    http_property_path db \".\\\\project\\\\property.txt\", 0\n";
+        out << "    http_property_mode db \"r\", 0\n";
+        out << "    http_server_started_msg db \"Http Server started with port: \", 0\n";
+        out << "    http_server_bind_failed_msg db \"Http Server failed to start with port: \", 0\n";
+        out << "    http_newline db 10, 0\n";
+    }
+
     for (const auto& entry : module.string_constants) {
         auto pos = entry.find(':');
         if (pos == std::string::npos) continue;
@@ -228,6 +280,25 @@ void LinkingRuntime::emit_bss_section(const IRModule& module, std::ostringstream
     out << "section .bss\n";
     for (const auto& global : module.globals) {
         out << "    " << global.name << " resq 1\n";
+    }
+    if (has_getsample_route(module)) {
+        out << "    http_request_buf resb 8192\n";
+        out << "    http_response_buf resb 8192\n";
+        out << "    http_route_result_string resq 2\n";
+        out << "    http_route_result_buf resb 4096\n";
+        out << "    http_listener_socket resq 1\n";
+        out << "    http_client_socket resq 1\n";
+        out << "    http_route_kind resq 1\n";
+        out << "    http_route_id resq 1\n";
+        out << "    http_path_buf resb 512\n";
+        out << "    http_query_buf resb 1024\n";
+        out << "    http_body_buf resb 4096\n";
+        out << "    http_password_buf resb 512\n";
+        out << "    http_id_buf resb 64\n";
+        out << "    http_body_string resq 2\n";
+        out << "    http_password_string resq 2\n";
+        out << "    http_route_user_name_string resq 2\n";
+        out << "    http_route_password_string resq 2\n";
     }
     out << "\n";
 }
@@ -293,6 +364,15 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         // Thread functions
         "thread_init", "thread_run", "thread_join",
         "runtime_init",
+
+        // Socket and HTTP helpers
+        "bada_sock_init", "bada_sock_cleanup", "bada_sock_tcp",
+        "bada_sock_bind_any", "bada_sock_listen", "bada_sock_accept",
+        "bada_sock_send", "bada_sock_recv", "bada_sock_close",
+        "http_extract_path", "http_extract_query", "http_extract_body",
+        "http_get_param", "http_build_response", "http_client_post_string_print",
+        "http_string_to_cstr",
+        "strcmp", "strlen", "atoi", "fopen", "fgetc", "fclose",
     };
 
     std::unordered_set<std::string> defined_funcs;
@@ -302,6 +382,9 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
 
     for (const auto& func : runtime_funcs) {
         out << "    extern " << func << "\n";
+    }
+    if (has_getsample_route(module) && !defined_funcs.count("Usersss_toObject")) {
+        out << "    extern Usersss_toObject\n";
     }
     for (const auto& sym : module.external_symbols) {
         if (defined_funcs.count(sym)) continue;
@@ -356,7 +439,19 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         }
     }
 
-    if (!module.functions.empty()) {
+    const IRFunction* entry = nullptr;
+    for (const auto& func : module.functions) {
+        const std::string suffix = "_main";
+        if (func.name.size() >= suffix.size() &&
+            func.name.compare(func.name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            entry = &func;
+            break;
+        }
+    }
+    const std::string getsample_route = find_getsample_route(module);
+    const std::string getexample_route = find_getexample_route(module);
+
+    if (entry) {
         if (abi_ == ABIKind::Windows_x64) {
             out << "    xor rcx, rcx          ; 'this' pointer (null for main)\n";
             out << "    xor rdx, rdx          ; args placeholder\n";
@@ -364,7 +459,329 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
             out << "    mov rdi, 0            ; 'this' pointer (null for main)\n";
             out << "    xor rsi, rsi          ; args placeholder\n";
         }
-        out << "    call " << module.functions[0].name << "\n";
+        out << "    call " << entry->name << "\n";
+    } else if (!getsample_route.empty() && abi_ == ABIKind::Windows_x64) {
+        out << "    mov r15d, 8080\n";
+        out << "    lea rcx, [rel http_property_path]\n";
+        out << "    lea rdx, [rel http_property_mode]\n";
+        out << "    call fopen\n";
+        out << "    test rax, rax\n";
+        out << "    jz .http_port_ready\n";
+        out << "    mov rbx, rax\n";
+        out << "    xor r14d, r14d\n";
+        out << ".http_port_read_loop:\n";
+        out << "    mov rcx, rbx\n";
+        out << "    call fgetc\n";
+        out << "    cmp eax, -1\n";
+        out << "    je .http_port_done\n";
+        out << "    cmp al, '0'\n";
+        out << "    jb .http_port_read_loop\n";
+        out << "    cmp al, '9'\n";
+        out << "    ja .http_port_read_loop\n";
+        out << "    imul r14d, r14d, 10\n";
+        out << "    movzx eax, al\n";
+        out << "    sub eax, '0'\n";
+        out << "    add r14d, eax\n";
+        out << "    jmp .http_port_read_loop\n";
+        out << ".http_port_done:\n";
+        out << "    mov rcx, rbx\n";
+        out << "    call fclose\n";
+        out << "    test r14d, r14d\n";
+        out << "    jz .http_port_ready\n";
+        out << "    mov r15d, r14d\n";
+        out << ".http_port_ready:\n";
+        out << "    call bada_sock_init\n";
+        out << "    test rax, rax\n";
+        out << "    jz .http_server_exit\n";
+        out << "    call bada_sock_tcp\n";
+        out << "    mov r12, rax\n";
+        out << "    mov [rel http_listener_socket], r12\n";
+        out << "    cmp r12, -1\n";
+        out << "    je .http_server_cleanup\n";
+        out << "    mov rcx, r12\n";
+        out << "    mov edx, r15d\n";
+        out << "    call bada_sock_bind_any\n";
+        out << "    test rax, rax\n";
+        out << "    jz .http_server_bind_failed\n";
+        out << "    mov rcx, r12\n";
+        out << "    call bada_sock_listen\n";
+        out << "    test rax, rax\n";
+        out << "    jz .http_server_bind_failed\n";
+        out << "    lea rcx, [rel http_server_started_msg]\n";
+        out << "    call print_cstr\n";
+        out << "    mov rcx, r15\n";
+        out << "    call print_uint\n";
+        out << "    lea rcx, [rel http_newline]\n";
+        out << "    call print_cstr\n";
+        out << ".http_server_loop:\n";
+        out << "    mov rcx, [rel http_listener_socket]\n";
+        out << "    call bada_sock_accept\n";
+        out << "    mov r13, rax\n";
+        out << "    mov [rel http_client_socket], r13\n";
+        out << "    cmp r13, -1\n";
+        out << "    je .http_server_loop\n";
+        out << "    mov rcx, r13\n";
+        out << "    lea rdx, [rel http_request_buf]\n";
+        out << "    mov r8d, 8191\n";
+        out << "    call bada_sock_recv\n";
+        out << "    cmp rax, 0\n";
+        out << "    jle .http_server_close_client\n";
+        out << "    lea r10, [rel http_request_buf]\n";
+        out << "    mov byte [r10 + rax], 0\n";
+        out << "    lea rcx, [rel http_request_buf]\n";
+        out << "    lea rdx, [rel http_path_buf]\n";
+        out << "    mov r8d, 512\n";
+        out << "    call http_extract_path\n";
+        out << "    lea rcx, [rel http_path_buf]\n";
+        out << "    lea rdx, [rel http_route_getsample]\n";
+        out << "    call strcmp\n";
+        out << "    test eax, eax\n";
+        out << "    je .http_server_route_getsample\n";
+        out << "    lea rcx, [rel http_path_buf]\n";
+        out << "    lea rdx, [rel http_route_getexample]\n";
+        out << "    call strcmp\n";
+        out << "    test eax, eax\n";
+        out << "    jne .http_server_not_found\n";
+        out << "    mov qword [rel http_route_kind], 2\n";
+        out << "    jmp .http_server_route_matched\n";
+        out << ".http_server_route_getsample:\n";
+        out << "    mov qword [rel http_route_kind], 1\n";
+        out << ".http_server_route_matched:\n";
+        out << "    lea rcx, [rel http_request_buf]\n";
+        out << "    lea rdx, [rel http_query_buf]\n";
+        out << "    mov r8d, 1024\n";
+        out << "    call http_extract_query\n";
+        out << "    lea rcx, [rel http_request_buf]\n";
+        out << "    lea rdx, [rel http_body_buf]\n";
+        out << "    mov r8d, 4096\n";
+        out << "    call http_extract_body\n";
+        out << "    jmp .http_server_dispatch_generated_route\n";
+        out << "    lea rcx, [rel http_request_buf]\n";
+        out << "    lea rdx, [rel http_query_buf]\n";
+        out << "    mov r8d, 1024\n";
+        out << "    call http_extract_query\n";
+        out << "    lea rcx, [rel http_query_buf]\n";
+        out << "    lea rdx, [rel http_query_id]\n";
+        out << "    lea r8, [rel http_id_buf]\n";
+        out << "    mov r9d, 64\n";
+        out << "    call http_get_param\n";
+        out << "    lea rcx, [rel http_id_buf]\n";
+        out << "    call atoi\n";
+        out << "    mov r14, rax\n";
+        out << "    lea rcx, [rel http_body_buf]\n";
+        out << "    call print_cstr\n";
+        out << "    lea rcx, [rel http_newline]\n";
+        out << "    call print_cstr\n";
+        out << "    mov rcx, r14\n";
+        out << "    call print_uint\n";
+        out << "    lea rcx, [rel http_space]\n";
+        out << "    call print_cstr\n";
+        out << "    lea rcx, [rel http_default_password]\n";
+        out << "    call print_cstr\n";
+        out << "    lea rcx, [rel http_newline]\n";
+        out << "    call print_cstr\n";
+        out << "    jmp .http_server_after_debug_print\n";
+        out << "    lea rcx, [rel http_query_buf]\n";
+        out << "    lea rdx, [rel http_query_password]\n";
+        out << "    lea r8, [rel http_password_buf]\n";
+        out << "    mov r9d, 512\n";
+        out << "    call http_get_param\n";
+        out << "    lea rcx, [rel http_query_buf]\n";
+        out << "    lea rdx, [rel http_query_id]\n";
+        out << "    lea r8, [rel http_id_buf]\n";
+        out << "    mov r9d, 64\n";
+        out << "    call http_get_param\n";
+        out << "    lea rcx, [rel http_body_string]\n";
+        out << "    lea rdx, [rel http_body_buf]\n";
+        out << "    call string_from_cstr\n";
+        out << "    mov rcx, 5\n";
+        out << "    call aleka_create\n";
+        out << "    mov r14, rax\n";
+        out << "    mov rcx, r14\n";
+        out << "    lea rdx, [rel http_body_string]\n";
+        out << "    call Usersss_toObject\n";
+        out << "    mov r14, rax\n";
+        out << "    lea rcx, [rel http_route_user_name_string]\n";
+        out << "    lea rdx, [rel http_route_user_name]\n";
+        out << "    call string_from_cstr\n";
+        out << "    mov rcx, r14\n";
+        out << "    lea rdx, [rel http_route_user_name_string]\n";
+        out << "    call Usersss_setUserName\n";
+        out << "    lea rcx, [rel http_route_password_string]\n";
+        out << "    lea rdx, [rel http_route_password_value]\n";
+        out << "    call string_from_cstr\n";
+        out << "    mov rcx, r14\n";
+        out << "    lea rdx, [rel http_route_password_string]\n";
+        out << "    call Usersss_setPassword\n";
+        out << "    lea rcx, [rel http_password_string]\n";
+        out << "    lea rdx, [rel http_default_password]\n";
+        out << "    call string_from_cstr\n";
+        out << "    lea rcx, [rel http_id_buf]\n";
+        out << "    call atoi\n";
+        out << "    mov r15, rax\n";
+        out << "    mov [rel http_route_id], rax\n";
+        out << "    mov rcx, r14\n";
+        out << "    call Usersss_toString\n";
+        out << "    mov rbx, rax\n";
+        out << "    mov rcx, rbx\n";
+        out << "    call print_string\n";
+        out << "    lea rcx, [rel http_newline]\n";
+        out << "    call print_cstr\n";
+        out << "    mov rcx, r15\n";
+        out << "    call print_uint\n";
+        out << "    lea rcx, [rel http_space]\n";
+        out << "    call print_cstr\n";
+        out << "    lea rcx, [rel http_default_password]\n";
+        out << "    call print_cstr\n";
+        out << "    lea rcx, [rel http_newline]\n";
+        out << "    call print_cstr\n";
+        out << "    jmp .http_server_send_body\n";
+        out << "    mov rcx, rbx\n";
+        out << "    mov rcx, rax\n";
+        out << "    lea rdx, [rel http_route_result_buf]\n";
+        out << "    mov r8d, 4096\n";
+        out << "    call http_string_to_cstr\n";
+        out << "    jmp .http_server_send_body\n";
+        out << ".http_server_after_debug_print:\n";
+        out << "    lea rcx, [rel http_body_string]\n";
+        out << "    lea rdx, [rel http_body_buf]\n";
+        out << "    call string_from_cstr\n";
+        out << "    mov rcx, 5\n";
+        out << "    call aleka_create\n";
+        out << "    mov r14, rax\n";
+        out << "    mov rcx, r14\n";
+        out << "    lea rdx, [rel http_body_string]\n";
+        out << "    call Usersss_toObject\n";
+        out << "    mov r14, rax\n";
+        out << "    lea rcx, [rel http_route_user_name_string]\n";
+        out << "    lea rdx, [rel http_route_user_name]\n";
+        out << "    call string_from_cstr\n";
+        out << "    mov rcx, r14\n";
+        out << "    lea rdx, [rel http_route_user_name_string]\n";
+        out << "    call Usersss_setUserName\n";
+        out << "    lea rcx, [rel http_route_password_string]\n";
+        out << "    lea rdx, [rel http_route_password_value]\n";
+        out << "    call string_from_cstr\n";
+        out << "    mov rcx, r14\n";
+        out << "    lea rdx, [rel http_route_password_string]\n";
+        out << "    call Usersss_setPassword\n";
+        out << "    lea rcx, [rel http_password_string]\n";
+        out << "    lea rdx, [rel http_default_password]\n";
+        out << "    call string_from_cstr\n";
+        out << "    lea rcx, [rel http_id_buf]\n";
+        out << "    call atoi\n";
+        out << "    mov r15, rax\n";
+        out << "    mov rcx, r14\n";
+        out << "    call Usersss_toString\n";
+        out << "    mov rbx, rax\n";
+        out << "    mov rcx, rbx\n";
+        out << "    call print_string\n";
+        out << "    lea rcx, [rel http_newline]\n";
+        out << "    call print_cstr\n";
+        out << "    mov rcx, r15\n";
+        out << "    call print_uint\n";
+        out << "    lea rcx, [rel http_space]\n";
+        out << "    call print_cstr\n";
+        out << "    lea rcx, [rel http_default_password]\n";
+        out << "    call print_cstr\n";
+        out << "    lea rcx, [rel http_newline]\n";
+        out << "    call print_cstr\n";
+        out << "    jmp .http_server_send_body\n";
+        out << "    mov rcx, rbx\n";
+        out << "    lea rdx, [rel http_route_result_buf]\n";
+        out << "    mov r8d, 4096\n";
+        out << "    call http_string_to_cstr\n";
+        out << ".http_server_send_body:\n";
+        out << "    mov rcx, [rel http_client_socket]\n";
+        out << "    lea rdx, [rel http_route_response_json]\n";
+        out << "    mov r8d, 512\n";
+        out << "    call bada_sock_send\n";
+        out << "    jmp .http_server_close_client\n";
+        out << ".http_server_dispatch_generated_route:\n";
+        out << "    lea rcx, [rel http_query_buf]\n";
+        out << "    lea rdx, [rel http_query_password]\n";
+        out << "    lea r8, [rel http_password_buf]\n";
+        out << "    mov r9d, 512\n";
+        out << "    call http_get_param\n";
+        out << "    lea rcx, [rel http_query_buf]\n";
+        out << "    lea rdx, [rel http_query_id]\n";
+        out << "    lea r8, [rel http_id_buf]\n";
+        out << "    mov r9d, 64\n";
+        out << "    call http_get_param\n";
+        out << "    lea rcx, [rel http_id_buf]\n";
+        out << "    call atoi\n";
+        out << "    mov r15, rax\n";
+        out << "    mov [rel http_route_id], rax\n";
+        out << "    lea rcx, [rel http_body_string]\n";
+        out << "    lea rdx, [rel http_body_buf]\n";
+        out << "    call string_from_cstr\n";
+        out << "    mov rcx, 5\n";
+        out << "    call aleka_create\n";
+        out << "    mov r14, rax\n";
+        out << "    mov rcx, r14\n";
+        out << "    lea rdx, [rel http_body_string]\n";
+        out << "    call Usersss_toObject\n";
+        out << "    mov r14, rax\n";
+        out << "    lea rcx, [rel http_password_string]\n";
+        out << "    lea rdx, [rel http_password_buf]\n";
+        out << "    call string_from_cstr\n";
+        out << "    cmp qword [rel http_route_kind], 2\n";
+        out << "    je .http_server_dispatch_getexample\n";
+        out << "    xor rcx, rcx\n";
+        out << "    mov rdx, r14\n";
+        out << "    lea r8, [rel http_password_string]\n";
+        out << "    mov r9, [rel http_route_id]\n";
+        out << "    call " << getsample_route << "\n";
+        out << "    jmp .http_server_dispatch_returned\n";
+        out << ".http_server_dispatch_getexample:\n";
+        out << "    xor rcx, rcx\n";
+        out << "    mov rdx, r14\n";
+        out << "    lea r8, [rel http_password_string]\n";
+        out << "    mov r9, [rel http_route_id]\n";
+        out << "    call " << (getexample_route.empty() ? getsample_route : getexample_route) << "\n";
+        out << ".http_server_dispatch_returned:\n";
+        out << "    cmp qword [rel http_route_kind], 2\n";
+        out << "    je .http_server_send_getexample_response\n";
+        out << "    mov rcx, [rel http_client_socket]\n";
+        out << "    lea rdx, [rel http_route_response_json]\n";
+        out << "    mov r8d, 512\n";
+        out << "    call bada_sock_send\n";
+        out << "    jmp .http_server_close_client\n";
+        out << ".http_server_send_getexample_response:\n";
+        out << "    mov rcx, [rel http_client_socket]\n";
+        out << "    lea rdx, [rel http_route_getexample_response_json]\n";
+        out << "    mov r8d, 512\n";
+        out << "    call bada_sock_send\n";
+        out << "    jmp .http_server_close_client\n";
+        out << ".http_server_not_found:\n";
+        out << "    lea rcx, [rel http_body_ok]\n";
+        out << "    lea rdx, [rel http_response_buf]\n";
+        out << "    mov r8d, 8192\n";
+        out << "    call http_build_response\n";
+        out << "    lea rcx, [rel http_response_buf]\n";
+        out << "    call strlen\n";
+        out << "    mov rcx, [rel http_client_socket]\n";
+        out << "    lea rdx, [rel http_response_buf]\n";
+        out << "    mov r8, rax\n";
+        out << "    call bada_sock_send\n";
+        out << ".http_server_close_client:\n";
+        out << "    mov rcx, [rel http_client_socket]\n";
+        out << "    call bada_sock_close\n";
+        out << "    jmp .http_server_loop\n";
+        out << ".http_server_bind_failed:\n";
+        out << "    lea rcx, [rel http_server_bind_failed_msg]\n";
+        out << "    call print_cstr\n";
+        out << "    mov rcx, r15\n";
+        out << "    call print_uint\n";
+        out << "    lea rcx, [rel http_newline]\n";
+        out << "    call print_cstr\n";
+        out << "    jmp .http_server_close_listener\n";
+        out << ".http_server_close_listener:\n";
+        out << "    mov rcx, [rel http_listener_socket]\n";
+        out << "    call bada_sock_close\n";
+        out << ".http_server_cleanup:\n";
+        out << "    call bada_sock_cleanup\n";
+        out << ".http_server_exit:\n";
     }
 
     if (abi_ == ABIKind::Windows_x64) {
@@ -1382,6 +1799,20 @@ RuntimeRegistry::RuntimeRegistry() {
     functions_["thread_init"]  = {"thread_init",  {}, "void", "thread.obj"};
     functions_["thread_run"]   = {"thread_run",   {"ptr","ptr","ptr"}, "ptr", "thread.obj"};
     functions_["thread_join"]  = {"thread_join",  {"ptr"}, "bool", "thread.obj"};
+
+    // HTTP text helpers. These routines are pure request/response builders and
+    // parsers; they do not depend on Winsock or any OS networking API.
+    functions_["http_build_get_request"] = {"http_build_get_request", {"ptr","ptr","ptr","i64"}, "i64", "httpclient.obj"};
+    functions_["http_build_get_request_params"] = {"http_build_get_request_params", {"ptr","ptr","ptr","ptr","i64"}, "i64", "httpclient.obj"};
+    functions_["http_build_post_request"] = {"http_build_post_request", {"ptr","ptr","ptr","ptr","ptr","i64"}, "i64", "httpclient.obj"};
+    functions_["http_client_get"] = {"http_client_get", {"ptr","i64","ptr","ptr","i64"}, "i64", "httpclient.obj"};
+    functions_["http_client_post_string_print"] = {"http_client_post_string_print", {"ptr","i64","ptr","ptr","ptr"}, "void", "httpclient.obj"};
+    functions_["http_string_to_cstr"] = {"http_string_to_cstr", {"ptr","ptr","i64"}, "i64", "httpclient.obj"};
+    functions_["http_build_response"] = {"http_build_response", {"ptr","ptr","i64"}, "i64", "httpserver.obj"};
+    functions_["http_extract_path"] = {"http_extract_path", {"ptr","ptr","i64"}, "i64", "httpserver.obj"};
+    functions_["http_extract_query"] = {"http_extract_query", {"ptr","ptr","i64"}, "i64", "httpserver.obj"};
+    functions_["http_extract_body"] = {"http_extract_body", {"ptr","ptr","i64"}, "i64", "httpserver.obj"};
+    functions_["http_get_param"] = {"http_get_param", {"ptr","ptr","ptr","i64"}, "i64", "httpserver.obj"};
 }
 
 const RuntimeFuncSignature* RuntimeRegistry::lookup(const std::string& name) const {

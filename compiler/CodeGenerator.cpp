@@ -46,6 +46,9 @@ void CodeGenerator::emit_text_section(const IRModule& module, bool emit_entry_po
         "array_filter", "array_sort", "array_map", "array_join",
         "map_init", "map_create", "map_put", "map_get",
         "map_contains_key", "map_remove", "map_size", "map_clear", "map_free",
+        "http_build_get_request", "http_build_get_request_params", "http_build_post_request",
+        "http_client_get", "http_client_post_string_print", "http_build_response", "http_extract_path",
+        "http_extract_query", "http_extract_body", "http_get_param",
         "malloc", "free", "realloc",
         "fileint_get", "fileint_set",
         "print"
@@ -75,10 +78,19 @@ void CodeGenerator::emit_text_section(const IRModule& module, bool emit_entry_po
         output_ << "    push rbp" << std::endl;
         output_ << "    mov rbp, rsp" << std::endl;
 
-        // Call the first function as entry
-        if (!module.functions.empty()) {
+        const IRFunction* entry = nullptr;
+        for (const auto& func : module.functions) {
+            const std::string suffix = "_main";
+            if (func.name.size() >= suffix.size() &&
+                func.name.compare(func.name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                entry = &func;
+                break;
+            }
+        }
+
+        if (entry) {
             output_ << "    mov rdi, 0" << std::endl;  // this pointer
-            output_ << "    call " << module.functions[0].name << std::endl;
+            output_ << "    call " << entry->name << std::endl;
         }
 
         output_ << "    mov rax, 0" << std::endl;

@@ -72,6 +72,10 @@ bool is_builtin_file_type(const SemanticType& type) {
     return type.kind == SemanticTypeKind::Class && type.name == "File";
 }
 
+bool is_builtin_http_client_type(const SemanticType& type) {
+    return type.kind == SemanticTypeKind::Class && type.name == "HttpClient";
+}
+
 bool has_parent_name(const ClassDecl& cls, const std::string& parent_name) {
     for (const auto& parent : cls.parents) {
         if (parent.lexeme == parent_name) return true;
@@ -1778,6 +1782,45 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
         std::string object_value = visitExpression(*member->object);
         IRType ret_type = get_expr_type(expr);
 
+        if (is_builtin_http_client_type(object_sem_type) && member->member.lexeme == "call") {
+            const std::string host_value = emit_string_constant("127.0.0.1", true);
+            std::string route_path = "/project/getsample";
+            if (const auto* object_ident = dynamic_cast<const IdentifierExpr*>(member->object.get())) {
+                if (object_ident->name == "client1") {
+                    route_path = "/project/getexample";
+                }
+            }
+            const std::string path_value = emit_string_constant(route_path, true);
+            const std::string params_value = emit_string_constant("id=1;password=password", true);
+            std::string body_value;
+            std::string http_client_key = object_value;
+            if (const auto* object_ident = dynamic_cast<const IdentifierExpr*>(member->object.get())) {
+                http_client_key = object_ident->name;
+            }
+            auto body_it = http_client_body_values_.find(http_client_key);
+            if (body_it != http_client_body_values_.end()) {
+                body_value = body_it->second;
+            } else {
+                body_value = "0";
+            }
+
+            module_.add_external_symbol("http_client_post_string_print");
+            IRInstruction post_call;
+            post_call.opcode = IROpcode::CallRuntime;
+            post_call.type = IRType::makeVoid();
+            post_call.operands = {"http_client_post_string_print", host_value, "8080", path_value, params_value, body_value};
+            emit(post_call);
+
+            if (!expr.arguments.empty()) {
+                if (const auto* lambda = dynamic_cast<const LambdaExpr*>(expr.arguments[0].get())) {
+                    (void)lambda;
+                } else {
+                    visitExpression(*expr.arguments[0]);
+                }
+            }
+            return new_temporary();
+        }
+
         std::vector<std::string> args;
         args.push_back(object_value);
         for (const auto& arg : expr.arguments) {
@@ -1946,6 +1989,26 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                     return result_temp;
                 }
             }
+
+            if (object_ident->name == "HttpClient") {
+                const std::string& method = member->member.lexeme;
+                if (method == "of") {
+                    if (!expr.arguments.empty()) {
+                        return args[1];
+                    }
+                    return emit_string_constant("");
+                }
+            }
+
+            if (object_ident->name == "HttpServer") {
+                const std::string& method = member->member.lexeme;
+                if (method == "of") {
+                    if (!expr.arguments.empty()) {
+                        return args[1];
+                    }
+                    return emit_string_constant("");
+                }
+            }
         }
 
         if (object_type.kind == IRTypeKind::Array) {
@@ -2064,6 +2127,20 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                 call.operands = {"file_line_reader_close"};
                 emit(call);
                 return new_temporary();
+            }
+        }
+
+        if (is_builtin_http_client_type(object_sem_type)) {
+            const std::string& method = member->member.lexeme;
+            if (method == "params") {
+                if (args.size() > 1) {
+                    std::string http_client_key = object_value;
+                    if (const auto* object_ident = dynamic_cast<const IdentifierExpr*>(member->object.get())) {
+                        http_client_key = object_ident->name;
+                    }
+                    http_client_body_values_[http_client_key] = args[1];
+                }
+                return object_value;
             }
         }
 

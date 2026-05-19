@@ -90,7 +90,8 @@ bool path_exists(const std::string& path) {
 }
 
 bool is_builtin_class_name(const std::string& name) {
-    return name == "Map" || name == "File" || name == "Thread" || name == "Aleka";
+    return name == "Map" || name == "File" || name == "Thread" || name == "Aleka" ||
+           name == "HttpClient" || name == "HttpServer";
 }
 
 bool looks_like_class_name(const std::string& name) {

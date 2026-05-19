@@ -283,16 +283,14 @@ std::unique_ptr<LambdaExpr> Parser::parseLambdaExpr() {
     consume(TokenKind::RightParen, "expected ')' after lambda parameters");
     consume(TokenKind::FatArrow, "expected '=>' after lambda parameters");
 
-    TokenKind body_start = TokenKind::Less;
     TokenKind body_end = TokenKind::Greater;
     if (match(TokenKind::Less)) {
-        body_start = TokenKind::Less;
         body_end = TokenKind::Greater;
     } else if (match(TokenKind::LeftBrace)) {
-        body_start = TokenKind::LeftBrace;
         body_end = TokenKind::RightBrace;
     } else {
-        addErrorAtCurrent("expected '<' or '{' to start lambda body");
+        auto expr = parseExpression();
+        lambda->body.push_back(std::make_unique<ExprStmt>(std::move(expr)));
         return lambda;
     }
 

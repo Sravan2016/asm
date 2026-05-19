@@ -1,0 +1,16 @@
+SampleHttpClient: HttpClient->
+    main{String[] args} -->
+        HttpClient client = HttpClient.of("https://localhost:9090/project/getsample?id=1;password=password");
+        Usersss usersss = Usersss.of(3, "Name","mail1", "password1", 9182592263l);
+
+        client.params(usersss.toString());
+        client.call((response)=>println(response));
+
+
+        HttpClient client1 = HttpClient.of("https://localhost:9090/project/getexample?id=1;password=password");
+        Usersss usersss1 = Usersss.of(3, "Name","mail1", "password1", 9182592263l);
+
+        client1.params(usersss1.toString());
+        client1.call((response)=>println("getexample: "+response));
+    <--
+<-

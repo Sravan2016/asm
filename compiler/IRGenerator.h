@@ -125,4 +125,5 @@ private:
     std::unordered_map<std::string, std::string> string_constants_;
     std::unordered_map<std::string, std::vector<std::string>> class_parent_map_;
     std::unordered_map<std::string, std::unordered_set<std::string>> class_method_map_;
+    std::unordered_map<std::string, std::string> http_client_body_values_;
 };

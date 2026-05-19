@@ -12,7 +12,7 @@ bool contains_key(const MapType& map, const std::string& key) {
 }
 
 bool is_builtin_class_name(const std::string& name) {
-    return name == "Map" || name == "File";
+    return name == "Map" || name == "File" || name == "HttpClient" || name == "HttpServer";
 }
 
 bool is_builtin_map_type(const SemanticType& type) {
@@ -21,6 +21,14 @@ bool is_builtin_map_type(const SemanticType& type) {
 
 bool is_builtin_file_type(const SemanticType& type) {
     return type.kind == SemanticTypeKind::Class && type.name == "File";
+}
+
+bool is_builtin_http_client_type(const SemanticType& type) {
+    return type.kind == SemanticTypeKind::Class && type.name == "HttpClient";
+}
+
+bool is_builtin_http_server_type(const SemanticType& type) {
+    return type.kind == SemanticTypeKind::Class && type.name == "HttpServer";
 }
 
 bool has_parent(const ClassDecl& class_decl, const std::string& parent_name) {
@@ -597,6 +605,28 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
                 rememberExprType(expr, result);
                 return result;
             }
+            if (!method_symbol && object_ident->name == "HttpClient") {
+                for (const auto& arg : expr.arguments) {
+                    if (arg) analyseExpr(*arg);
+                }
+                SemanticType result = SemanticType::makeUnknown();
+                if (member->member.lexeme == "of") {
+                    result = SemanticType::makeClass("HttpClient");
+                }
+                rememberExprType(expr, result);
+                return result;
+            }
+            if (!method_symbol && object_ident->name == "HttpServer") {
+                for (const auto& arg : expr.arguments) {
+                    if (arg) analyseExpr(*arg);
+                }
+                SemanticType result = SemanticType::makeUnknown();
+                if (member->member.lexeme == "of") {
+                    result = SemanticType::makeClass("HttpServer");
+                }
+                rememberExprType(expr, result);
+                return result;
+            }
         }
 
         if (!method_symbol && member->object) {
@@ -629,6 +659,24 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
                     else if (method == "close") result_type = SemanticType::makeVoid();
                     rememberExprType(expr, result_type);
                     return result_type;
+                }
+                if (!method_symbol && is_builtin_http_client_type(object_type)) {
+                    for (const auto& arg : expr.arguments) {
+                        if (arg) analyseExpr(*arg);
+                    }
+                    const std::string& method = member->member.lexeme;
+                    SemanticType result_type = SemanticType::makeUnknown();
+                    if (method == "params") result_type = SemanticType::makeClass("HttpClient");
+                    else if (method == "call") result_type = SemanticType::makeVoid();
+                    rememberExprType(expr, result_type);
+                    return result_type;
+                }
+                if (!method_symbol && is_builtin_http_server_type(object_type)) {
+                    for (const auto& arg : expr.arguments) {
+                        if (arg) analyseExpr(*arg);
+                    }
+                    rememberExprType(expr, SemanticType::makeVoid());
+                    return SemanticType::makeVoid();
                 }
             } else if (object_type.kind == SemanticTypeKind::Unknown) {
                 for (const auto& arg : expr.arguments) {
@@ -704,6 +752,22 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
                 else if (method == "close") result_type = SemanticType::makeVoid();
                 rememberExprType(expr, result_type);
                 return result_type;
+            } else if (is_builtin_http_client_type(object_type)) {
+                for (const auto& arg : expr.arguments) {
+                    if (arg) analyseExpr(*arg);
+                }
+                const std::string& method = member->member.lexeme;
+                SemanticType result_type = SemanticType::makeUnknown();
+                if (method == "params") result_type = SemanticType::makeClass("HttpClient");
+                else if (method == "call") result_type = SemanticType::makeVoid();
+                rememberExprType(expr, result_type);
+                return result_type;
+            } else if (is_builtin_http_server_type(object_type)) {
+                for (const auto& arg : expr.arguments) {
+                    if (arg) analyseExpr(*arg);
+                }
+                rememberExprType(expr, SemanticType::makeVoid());
+                return SemanticType::makeVoid();
             }
         }
 
@@ -737,6 +801,16 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
                 if (method == "nextLine") result_type = SemanticType::makeBoolean();
                 else if (method == "getLine") result_type = SemanticType::makeString();
                 else if (method == "close") result_type = SemanticType::makeVoid();
+                rememberExprType(expr, result_type);
+                return result_type;
+            }
+            if (method == "params" || method == "call") {
+                for (const auto& arg : expr.arguments) {
+                    if (arg) analyseExpr(*arg);
+                }
+                SemanticType result_type = method == "params"
+                    ? SemanticType::makeClass("HttpClient")
+                    : SemanticType::makeVoid();
                 rememberExprType(expr, result_type);
                 return result_type;
             }
@@ -886,6 +960,20 @@ SemanticType SemanticAnalyser::analyseMemberExpr(const MemberExpr& expr) {
                  method == "get_line_at") result_type = SemanticType::makeBoolean();
         rememberExprType(expr, result_type);
         return result_type;
+    }
+
+    if (is_builtin_http_client_type(object_type)) {
+        const std::string& method = expr.member.lexeme;
+        SemanticType result_type = SemanticType::makeUnknown();
+        if (method == "params") result_type = SemanticType::makeClass("HttpClient");
+        else if (method == "call") result_type = SemanticType::makeVoid();
+        rememberExprType(expr, result_type);
+        return result_type;
+    }
+
+    if (is_builtin_http_server_type(object_type)) {
+        rememberExprType(expr, SemanticType::makeVoid());
+        return SemanticType::makeVoid();
     }
 
     if (object_type.kind == SemanticTypeKind::String) {

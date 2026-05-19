@@ -2,6 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #define CMD_MAX 32768
 
@@ -31,6 +36,30 @@ static void replace_extension(const char* path, const char* ext, char* out, size
     } else {
         snprintf(out, cap, "%.*s%s", (int)dot, path, ext);
     }
+}
+
+static void basename_without_extension(const char* path, char* out, size_t cap) {
+    const char* start = path;
+    const char* p = path;
+    size_t len;
+    size_t dot;
+    while (*p) {
+        if (*p == '\\' || *p == '/') start = p + 1;
+        ++p;
+    }
+    len = strlen(start);
+    dot = len;
+    while (dot > 0) {
+        if (start[dot - 1] == '.') {
+            --dot;
+            break;
+        }
+        --dot;
+    }
+    if (dot == 0 && start[0] != '.') dot = len;
+    if (dot >= cap) dot = cap - 1;
+    memcpy(out, start, dot);
+    out[dot] = '\0';
 }
 
 static void join_path(const char* dir, const char* name, char* out, size_t cap) {
@@ -179,6 +208,9 @@ int main(int argc, char** argv) {
     char manifest_path[1024];
     char command[CMD_MAX];
     char path_buf[1024];
+    char run_name[1024];
+    char main_base[512];
+    int pid;
     int i;
 
     const char* pure_objs[] = {
@@ -224,7 +256,15 @@ int main(int argc, char** argv) {
     append_quoted(command, sizeof(command), path_buf);
     join_path(heap_dir, "readwritefile.obj", path_buf, sizeof(path_buf));
     append_quoted(command, sizeof(command), path_buf);
-    append_text(command, sizeof(command), "-o \".\\bada_run.exe\" ");
+    basename_without_extension(main_obj, main_base, sizeof(main_base));
+#ifdef _WIN32
+    pid = _getpid();
+#else
+    pid = (int)getpid();
+#endif
+    snprintf(run_name, sizeof(run_name), ".\\bada_run_%s_%d.exe", main_base, pid);
+    append_text(command, sizeof(command), "-o ");
+    append_quoted(command, sizeof(command), run_name);
     append_text(command, sizeof(command),
                 "-lntdll -lws2_32 -lkernel32 -lkernel32 -luser32 -lgdi32 "
                 "-lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32");
@@ -238,7 +278,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (system(".\\bada_run.exe") != 0) {
+    if (system(run_name) != 0) {
         fprintf(stderr, "executor_asm: run failed\n");
         return 1;
     }
