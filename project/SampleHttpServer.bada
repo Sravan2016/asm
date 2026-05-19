@@ -1,5 +1,5 @@
 SampleHttpServer: HttpServer->
-    getsample{Usersss usersss, String password, Integer id} -->
+    getsampleone{Usersss usersss, String password, Integer id} -->
         println("getsample");
         usersss.setUserName("Sravan1");
         usersss.setPassword("Sravan1Pass");
@@ -7,11 +7,19 @@ SampleHttpServer: HttpServer->
         println(id+" "+password);
     [usersss]<--
 
-    getexample{Usersss usersss, String password, Integer id} -->
-            println("getexample");
+    getexampletwo{Usersss usersss, String password, Integer id} -->
+            println("getexampletwo");
             usersss.setUserName("Sravan2");
             usersss.setPassword("Sravan2Pass");
             println(usersss.toString());
             println(id+" "+password);
     [usersss]<--
+
+     getexampleone{Usersss usersss, String password, Integer id} -->
+                println("getexampleone");
+                usersss.setUserName("Sravan3");
+                usersss.setPassword("Sravan3Pass");
+                println(usersss.toString());
+                println(id+" "+password);
+     [usersss]<--
 <-

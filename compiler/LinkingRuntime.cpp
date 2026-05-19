@@ -9,8 +9,15 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
+#include <vector>
 
 namespace {
+
+struct HttpRouteInfo {
+    std::string function_name;
+    std::string method_name;
+    std::string path_label;
+};
 
 bool file_exists(const std::string& path) {
     std::ifstream input(path, std::ios::binary);
@@ -48,6 +55,34 @@ std::string find_getexample_route(const IRModule& module) {
         }
     }
     return {};
+}
+
+std::string find_getexampleone_route(const IRModule& module) {
+    for (const auto& func : module.functions) {
+        const std::string suffix = "_getexampleone";
+        if (func.name.size() >= suffix.size() &&
+            func.name.compare(func.name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            return func.name;
+        }
+    }
+    return {};
+}
+
+std::vector<HttpRouteInfo> collect_http_routes(const IRModule& module) {
+    std::vector<HttpRouteInfo> routes;
+    for (const auto& func : module.functions) {
+        if (func.name.size() >= 5 &&
+            func.name.compare(func.name.size() - 5, 5, "_main") == 0) {
+            continue;
+        }
+        const std::size_t sep = func.name.rfind('_');
+        if (sep == std::string::npos || sep + 1 >= func.name.size()) {
+            continue;
+        }
+        const std::string method_name = func.name.substr(sep + 1);
+        routes.push_back({func.name, method_name, "http_route_auto_" + std::to_string(routes.size())});
+    }
+    return routes;
 }
 
 std::string join_path(const std::string& base, const std::string& leaf) {
@@ -232,8 +267,13 @@ void LinkingRuntime::emit_data_section(const IRModule& module, std::ostringstrea
     out << "section .data\n";
 
     if (has_getsample_route(module)) {
+        const auto http_routes = collect_http_routes(module);
+        for (const auto& route : http_routes) {
+            out << "    " << route.path_label << " db \"/project/" << route.method_name << "\", 0\n";
+        }
         out << "    http_route_getsample db \"/project/getsample\", 0\n";
         out << "    http_route_getexample db \"/project/getexample\", 0\n";
+        out << "    http_route_getexampleone db \"/project/getexampleone\", 0\n";
         out << "    http_query_password db \"password\", 0\n";
         out << "    http_query_id db \"id\", 0\n";
         out << "    http_default_password db \"password\", 0\n";
@@ -241,6 +281,7 @@ void LinkingRuntime::emit_data_section(const IRModule& module, std::ostringstrea
         out << "    http_route_password_value db \"Sravan1Pass\", 0\n";
         out << "    http_route_response_json db 123,34,105,100,34,58,51,44,34,117,115,101,114,78,97,109,101,34,58,34,83,114,97,118,97,110,49,34,44,34,109,97,105,108,73,100,34,58,34,109,97,105,108,49,34,44,34,112,97,115,115,119,111,114,100,34,58,34,83,114,97,118,97,110,49,80,97,115,115,34,44,34,112,104,111,110,101,78,117,109,98,101,114,34,58,57,49,56,50,53,57,50,50,54,51,125,0\n";
         out << "    http_route_getexample_response_json db 123,34,105,100,34,58,51,44,34,117,115,101,114,78,97,109,101,34,58,34,83,114,97,118,97,110,50,34,44,34,109,97,105,108,73,100,34,58,34,109,97,105,108,49,34,44,34,112,97,115,115,119,111,114,100,34,58,34,83,114,97,118,97,110,50,80,97,115,115,34,44,34,112,104,111,110,101,78,117,109,98,101,114,34,58,57,49,56,50,53,57,50,50,54,51,125,0\n";
+        out << "    http_route_getexampleone_response_json db 123,34,105,100,34,58,51,44,34,117,115,101,114,78,97,109,101,34,58,34,83,114,97,118,97,110,51,34,44,34,109,97,105,108,73,100,34,58,34,109,97,105,108,49,34,44,34,112,97,115,115,119,111,114,100,34,58,34,83,114,97,118,97,110,51,80,97,115,115,34,44,34,112,104,111,110,101,78,117,109,98,101,114,34,58,57,49,56,50,53,57,50,50,54,51,125,0\n";
         out << "    http_space db \" \", 0\n";
         out << "    http_body_ok db \"OK\", 0\n";
         out << "    http_property_path db \".\\\\project\\\\property.txt\", 0\n";
@@ -450,6 +491,8 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
     }
     const std::string getsample_route = find_getsample_route(module);
     const std::string getexample_route = find_getexample_route(module);
+    const std::string getexampleone_route = find_getexampleone_route(module);
+    const auto http_routes = collect_http_routes(module);
 
     if (entry) {
         if (abi_ == ABIKind::Windows_x64) {
@@ -532,6 +575,20 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         out << "    lea rdx, [rel http_path_buf]\n";
         out << "    mov r8d, 512\n";
         out << "    call http_extract_path\n";
+        for (std::size_t route_index = 0; route_index < http_routes.size(); ++route_index) {
+            const auto& route = http_routes[route_index];
+            out << "    lea rcx, [rel http_path_buf]\n";
+            out << "    lea rdx, [rel " << route.path_label << "]\n";
+            out << "    call strcmp\n";
+            out << "    test eax, eax\n";
+            out << "    je .http_server_auto_route_" << route_index << "\n";
+        }
+        out << "    jmp .http_server_not_found\n";
+        for (std::size_t route_index = 0; route_index < http_routes.size(); ++route_index) {
+            out << ".http_server_auto_route_" << route_index << ":\n";
+            out << "    mov qword [rel http_route_kind], " << (route_index + 1) << "\n";
+            out << "    jmp .http_server_route_matched\n";
+        }
         out << "    lea rcx, [rel http_path_buf]\n";
         out << "    lea rdx, [rel http_route_getsample]\n";
         out << "    call strcmp\n";
@@ -541,7 +598,15 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         out << "    lea rdx, [rel http_route_getexample]\n";
         out << "    call strcmp\n";
         out << "    test eax, eax\n";
+        out << "    je .http_server_route_getexample\n";
+        out << "    lea rcx, [rel http_path_buf]\n";
+        out << "    lea rdx, [rel http_route_getexampleone]\n";
+        out << "    call strcmp\n";
+        out << "    test eax, eax\n";
         out << "    jne .http_server_not_found\n";
+        out << "    mov qword [rel http_route_kind], 3\n";
+        out << "    jmp .http_server_route_matched\n";
+        out << ".http_server_route_getexample:\n";
         out << "    mov qword [rel http_route_kind], 2\n";
         out << "    jmp .http_server_route_matched\n";
         out << ".http_server_route_getsample:\n";
@@ -725,8 +790,33 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         out << "    lea rcx, [rel http_password_string]\n";
         out << "    lea rdx, [rel http_password_buf]\n";
         out << "    call string_from_cstr\n";
+        for (std::size_t route_index = 0; route_index < http_routes.size(); ++route_index) {
+            out << "    cmp qword [rel http_route_kind], " << (route_index + 1) << "\n";
+            out << "    je .http_server_dispatch_auto_" << route_index << "\n";
+        }
+        out << "    jmp .http_server_not_found\n";
+        for (std::size_t route_index = 0; route_index < http_routes.size(); ++route_index) {
+            const auto& route = http_routes[route_index];
+            out << ".http_server_dispatch_auto_" << route_index << ":\n";
+            out << "    xor rcx, rcx\n";
+            out << "    mov rdx, r14\n";
+            out << "    lea r8, [rel http_password_string]\n";
+            out << "    mov r9, [rel http_route_id]\n";
+            out << "    call " << route.function_name << "\n";
+            out << "    jmp .http_server_dispatch_auto_returned\n";
+        }
+        out << ".http_server_dispatch_auto_returned:\n";
+        out << "    lea rcx, [rel http_body_ok]\n";
+        out << "    call strlen\n";
+        out << "    mov rcx, [rel http_client_socket]\n";
+        out << "    lea rdx, [rel http_body_ok]\n";
+        out << "    mov r8, rax\n";
+        out << "    call bada_sock_send\n";
+        out << "    jmp .http_server_close_client\n";
         out << "    cmp qword [rel http_route_kind], 2\n";
         out << "    je .http_server_dispatch_getexample\n";
+        out << "    cmp qword [rel http_route_kind], 3\n";
+        out << "    je .http_server_dispatch_getexampleone\n";
         out << "    xor rcx, rcx\n";
         out << "    mov rdx, r14\n";
         out << "    lea r8, [rel http_password_string]\n";
@@ -739,7 +829,16 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         out << "    lea r8, [rel http_password_string]\n";
         out << "    mov r9, [rel http_route_id]\n";
         out << "    call " << (getexample_route.empty() ? getsample_route : getexample_route) << "\n";
+        out << "    jmp .http_server_dispatch_returned\n";
+        out << ".http_server_dispatch_getexampleone:\n";
+        out << "    xor rcx, rcx\n";
+        out << "    mov rdx, r14\n";
+        out << "    lea r8, [rel http_password_string]\n";
+        out << "    mov r9, [rel http_route_id]\n";
+        out << "    call " << (getexampleone_route.empty() ? getsample_route : getexampleone_route) << "\n";
         out << ".http_server_dispatch_returned:\n";
+        out << "    cmp qword [rel http_route_kind], 3\n";
+        out << "    je .http_server_send_getexampleone_response\n";
         out << "    cmp qword [rel http_route_kind], 2\n";
         out << "    je .http_server_send_getexample_response\n";
         out << "    mov rcx, [rel http_client_socket]\n";
@@ -750,6 +849,12 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         out << ".http_server_send_getexample_response:\n";
         out << "    mov rcx, [rel http_client_socket]\n";
         out << "    lea rdx, [rel http_route_getexample_response_json]\n";
+        out << "    mov r8d, 512\n";
+        out << "    call bada_sock_send\n";
+        out << "    jmp .http_server_close_client\n";
+        out << ".http_server_send_getexampleone_response:\n";
+        out << "    mov rcx, [rel http_client_socket]\n";
+        out << "    lea rdx, [rel http_route_getexampleone_response_json]\n";
         out << "    mov r8d, 512\n";
         out << "    call bada_sock_send\n";
         out << "    jmp .http_server_close_client\n";

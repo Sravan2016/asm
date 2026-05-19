@@ -76,6 +76,17 @@ bool is_builtin_http_client_type(const SemanticType& type) {
     return type.kind == SemanticTypeKind::Class && type.name == "HttpClient";
 }
 
+std::string http_url_path_without_query(const std::string& url) {
+    std::size_t start = 0;
+    const std::size_t scheme = url.find("://");
+    if (scheme != std::string::npos) {
+        const std::size_t slash = url.find('/', scheme + 3);
+        start = slash == std::string::npos ? url.size() : slash;
+    }
+    const std::size_t query = url.find('?', start);
+    return url.substr(start, query == std::string::npos ? std::string::npos : query - start);
+}
+
 bool has_parent_name(const ClassDecl& cls, const std::string& parent_name) {
     for (const auto& parent : cls.parents) {
         if (parent.lexeme == parent_name) return true;
@@ -286,6 +297,8 @@ IRModule IRGenerator::generate(const Program& program,
     scope_stack_.clear();
     class_parent_map_.clear();
     class_method_map_.clear();
+    http_client_body_values_.clear();
+    http_client_route_paths_.clear();
 
     for (const auto& cls : program.classes) {
         if (!cls) continue;
@@ -883,6 +896,24 @@ void IRGenerator::visitVariableDecl(const VariableDeclStmt& stmt) {
     symbol_table_[stmt.name.lexeme] = addr;
 
     if (stmt.initializer) {
+        if (stmt.type.name == "HttpClient") {
+            if (const auto* call = dynamic_cast<const CallExpr*>(stmt.initializer.get())) {
+                if (const auto* member = dynamic_cast<const MemberExpr*>(call->callee.get())) {
+                    if (const auto* object_ident = dynamic_cast<const IdentifierExpr*>(member->object.get());
+                        object_ident && object_ident->name == "HttpClient" && member->member.lexeme == "of" &&
+                        !call->arguments.empty()) {
+                        if (const auto* literal = dynamic_cast<const LiteralExpr*>(call->arguments[0].get());
+                            literal && literal->kind == ExprKind::StringLiteral) {
+                            const std::string decoded = decode_string_literal_value(literal->value);
+                            const std::string route_path = http_url_path_without_query(decoded);
+                            if (!route_path.empty()) {
+                                http_client_route_paths_[stmt.name.lexeme] = route_path;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (type.kind == IRTypeKind::String && type.is_file_backed) {
             if (const auto* literal = dynamic_cast<const LiteralExpr*>(stmt.initializer.get());
                 literal && literal->kind == ExprKind::StringLiteral) {
@@ -1786,8 +1817,9 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
             const std::string host_value = emit_string_constant("127.0.0.1", true);
             std::string route_path = "/project/getsample";
             if (const auto* object_ident = dynamic_cast<const IdentifierExpr*>(member->object.get())) {
-                if (object_ident->name == "client1") {
-                    route_path = "/project/getexample";
+                auto route_it = http_client_route_paths_.find(object_ident->name);
+                if (route_it != http_client_route_paths_.end() && !route_it->second.empty()) {
+                    route_path = route_it->second;
                 }
             }
             const std::string path_value = emit_string_constant(route_path, true);
