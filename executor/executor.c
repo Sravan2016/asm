@@ -62,6 +62,19 @@ static void basename_without_extension(const char* path, char* out, size_t cap) 
     out[dot] = '\0';
 }
 
+static void stop_previous_run_processes(const char* main_base) {
+#ifdef _WIN32
+    char cleanup_cmd[2048];
+    if (!main_base || !*main_base) return;
+    snprintf(cleanup_cmd, sizeof(cleanup_cmd),
+             "powershell -NoProfile -Command \"Get-Process 'bada_run_%s_*' -ErrorAction SilentlyContinue | Stop-Process -Force\" >NUL 2>NUL",
+             main_base);
+    system(cleanup_cmd);
+#else
+    (void)main_base;
+#endif
+}
+
 static void join_path(const char* dir, const char* name, char* out, size_t cap) {
     size_t len = strlen(dir);
     if (len == 0) {
@@ -257,6 +270,7 @@ int main(int argc, char** argv) {
     join_path(heap_dir, "readwritefile.obj", path_buf, sizeof(path_buf));
     append_quoted(command, sizeof(command), path_buf);
     basename_without_extension(main_obj, main_base, sizeof(main_base));
+    stop_previous_run_processes(main_base);
 #ifdef _WIN32
     pid = _getpid();
 #else

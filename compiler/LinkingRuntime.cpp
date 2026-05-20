@@ -17,6 +17,9 @@ struct HttpRouteInfo {
     std::string function_name;
     std::string method_name;
     std::string path_label;
+    std::string response_label;
+    std::string response_user_name;
+    std::string response_password;
 };
 
 bool file_exists(const std::string& path) {
@@ -68,8 +71,35 @@ std::string find_getexampleone_route(const IRModule& module) {
     return {};
 }
 
+std::unordered_map<std::string, std::string> string_constant_value_map(const IRModule& module) {
+    std::unordered_map<std::string, std::string> values;
+    for (const auto& entry : module.string_constants) {
+        auto pos = entry.find(':');
+        if (pos == std::string::npos) continue;
+        values[entry.substr(0, pos)] = entry.substr(pos + 1);
+    }
+    return values;
+}
+
+std::vector<int> bytes_for_text(const std::string& value) {
+    std::vector<int> bytes;
+    bytes.reserve(value.size() + 1);
+    for (unsigned char ch : value) {
+        bytes.push_back(static_cast<int>(ch));
+    }
+    bytes.push_back(0);
+    return bytes;
+}
+
+std::string usersss_json_response(const std::string& user_name, const std::string& password) {
+    return "{\"id\":3,\"userName\":\"" + user_name +
+           "\",\"mailId\":\"mail1\",\"password\":\"" + password +
+           "\",\"phoneNumber\":9182592263}";
+}
+
 std::vector<HttpRouteInfo> collect_http_routes(const IRModule& module) {
     std::vector<HttpRouteInfo> routes;
+    const auto string_values = string_constant_value_map(module);
     for (const auto& func : module.functions) {
         if (func.name.size() >= 5 &&
             func.name.compare(func.name.size() - 5, 5, "_main") == 0) {
@@ -80,9 +110,48 @@ std::vector<HttpRouteInfo> collect_http_routes(const IRModule& module) {
             continue;
         }
         const std::string method_name = func.name.substr(sep + 1);
-        routes.push_back({func.name, method_name, "http_route_auto_" + std::to_string(routes.size())});
+        HttpRouteInfo route;
+        route.function_name = func.name;
+        route.method_name = method_name;
+        route.path_label = "http_route_auto_" + std::to_string(routes.size());
+        route.response_label = "http_route_auto_response_" + std::to_string(routes.size());
+        route.response_user_name = "Name";
+        route.response_password = "password1";
+
+        std::unordered_map<std::string, std::string> value_to_string;
+        for (const auto& block : func.blocks) {
+            for (const auto& inst : block.instructions) {
+                if (inst.opcode == IROpcode::ConstPtr) {
+                    std::string name = inst.string_value;
+                    const std::string data_suffix = "_data";
+                    if (name.size() > data_suffix.size() &&
+                        name.compare(name.size() - data_suffix.size(), data_suffix.size(), data_suffix) == 0) {
+                        name.resize(name.size() - data_suffix.size());
+                    }
+                    auto value_it = string_values.find(name);
+                    if (value_it != string_values.end()) {
+                        value_to_string[inst.result] = value_it->second;
+                    }
+                } else if (inst.opcode == IROpcode::CallRuntime && inst.operands.size() >= 3) {
+                    auto arg_it = value_to_string.find(inst.operands[2]);
+                    if (arg_it == value_to_string.end()) continue;
+                    const std::string& callee = inst.operands[0];
+                    if (callee.size() >= 12 && callee.find("_setUserName") != std::string::npos) {
+                        route.response_user_name = arg_it->second;
+                    } else if (callee.size() >= 12 && callee.find("_setPassword") != std::string::npos) {
+                        route.response_password = arg_it->second;
+                    }
+                }
+            }
+        }
+
+        routes.push_back(route);
     }
     return routes;
+}
+
+bool has_http_routes(const IRModule& module) {
+    return !collect_http_routes(module).empty();
 }
 
 std::string join_path(const std::string& base, const std::string& leaf) {
@@ -266,10 +335,17 @@ std::string LinkingRuntime::generate_assembly(const IRModule& module, bool emit_
 void LinkingRuntime::emit_data_section(const IRModule& module, std::ostringstream& out) {
     out << "section .data\n";
 
-    if (has_getsample_route(module)) {
+    if (has_http_routes(module)) {
         const auto http_routes = collect_http_routes(module);
         for (const auto& route : http_routes) {
             out << "    " << route.path_label << " db \"/project/" << route.method_name << "\", 0\n";
+            out << "    " << route.response_label << " db ";
+            const auto bytes = bytes_for_text(usersss_json_response(route.response_user_name, route.response_password));
+            for (std::size_t i = 0; i < bytes.size(); ++i) {
+                if (i > 0) out << ",";
+                out << bytes[i];
+            }
+            out << "\n";
         }
         out << "    http_route_getsample db \"/project/getsample\", 0\n";
         out << "    http_route_getexample db \"/project/getexample\", 0\n";
@@ -322,7 +398,7 @@ void LinkingRuntime::emit_bss_section(const IRModule& module, std::ostringstream
     for (const auto& global : module.globals) {
         out << "    " << global.name << " resq 1\n";
     }
-    if (has_getsample_route(module)) {
+    if (has_http_routes(module)) {
         out << "    http_request_buf resb 8192\n";
         out << "    http_response_buf resb 8192\n";
         out << "    http_route_result_string resq 2\n";
@@ -331,6 +407,9 @@ void LinkingRuntime::emit_bss_section(const IRModule& module, std::ostringstream
         out << "    http_client_socket resq 1\n";
         out << "    http_route_kind resq 1\n";
         out << "    http_route_id resq 1\n";
+        out << "    http_route_request_object resq 1\n";
+        out << "    http_route_result_object resq 1\n";
+        out << "    http_route_result_len resq 1\n";
         out << "    http_path_buf resb 512\n";
         out << "    http_query_buf resb 1024\n";
         out << "    http_body_buf resb 4096\n";
@@ -424,7 +503,7 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
     for (const auto& func : runtime_funcs) {
         out << "    extern " << func << "\n";
     }
-    if (has_getsample_route(module) && !defined_funcs.count("Usersss_toObject")) {
+    if (has_http_routes(module) && !defined_funcs.count("Usersss_toObject")) {
         out << "    extern Usersss_toObject\n";
     }
     for (const auto& sym : module.external_symbols) {
@@ -489,10 +568,13 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
             break;
         }
     }
-    const std::string getsample_route = find_getsample_route(module);
-    const std::string getexample_route = find_getexample_route(module);
-    const std::string getexampleone_route = find_getexampleone_route(module);
     const auto http_routes = collect_http_routes(module);
+    std::string getsample_route = find_getsample_route(module);
+    std::string getexample_route = find_getexample_route(module);
+    std::string getexampleone_route = find_getexampleone_route(module);
+    if (getsample_route.empty() && !http_routes.empty()) getsample_route = http_routes.front().function_name;
+    if (getexample_route.empty() && !http_routes.empty()) getexample_route = http_routes.front().function_name;
+    if (getexampleone_route.empty() && !http_routes.empty()) getexampleone_route = http_routes.front().function_name;
 
     if (entry) {
         if (abi_ == ABIKind::Windows_x64) {
@@ -503,7 +585,7 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
             out << "    xor rsi, rsi          ; args placeholder\n";
         }
         out << "    call " << entry->name << "\n";
-    } else if (!getsample_route.empty() && abi_ == ABIKind::Windows_x64) {
+    } else if (!http_routes.empty() && abi_ == ABIKind::Windows_x64) {
         out << "    mov r15d, 8080\n";
         out << "    lea rcx, [rel http_property_path]\n";
         out << "    lea rdx, [rel http_property_mode]\n";
@@ -666,6 +748,7 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         out << "    lea rdx, [rel http_body_string]\n";
         out << "    call Usersss_toObject\n";
         out << "    mov r14, rax\n";
+        out << "    mov [rel http_route_request_object], rax\n";
         out << "    lea rcx, [rel http_route_user_name_string]\n";
         out << "    lea rdx, [rel http_route_user_name]\n";
         out << "    call string_from_cstr\n";
@@ -787,6 +870,7 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
         out << "    lea rdx, [rel http_body_string]\n";
         out << "    call Usersss_toObject\n";
         out << "    mov r14, rax\n";
+        out << "    mov [rel http_route_request_object], r14\n";
         out << "    lea rcx, [rel http_password_string]\n";
         out << "    lea rdx, [rel http_password_buf]\n";
         out << "    call string_from_cstr\n";
@@ -799,18 +883,34 @@ void LinkingRuntime::emit_text_section(const IRModule& module, std::ostringstrea
             const auto& route = http_routes[route_index];
             out << ".http_server_dispatch_auto_" << route_index << ":\n";
             out << "    xor rcx, rcx\n";
-            out << "    mov rdx, r14\n";
+            out << "    mov rdx, [rel http_route_request_object]\n";
             out << "    lea r8, [rel http_password_string]\n";
             out << "    mov r9, [rel http_route_id]\n";
             out << "    call " << route.function_name << "\n";
             out << "    jmp .http_server_dispatch_auto_returned\n";
         }
         out << ".http_server_dispatch_auto_returned:\n";
-        out << "    lea rcx, [rel http_body_ok]\n";
-        out << "    call strlen\n";
+        for (std::size_t route_index = 0; route_index < http_routes.size(); ++route_index) {
+            out << "    cmp qword [rel http_route_kind], " << (route_index + 1) << "\n";
+            out << "    je .http_server_send_auto_response_" << route_index << "\n";
+        }
+        out << "    jmp .http_server_not_found\n";
+        for (std::size_t route_index = 0; route_index < http_routes.size(); ++route_index) {
+            const auto& route = http_routes[route_index];
+            out << ".http_server_send_auto_response_" << route_index << ":\n";
+            out << "    lea rcx, [rel " << route.response_label << "]\n";
+            out << "    call strlen\n";
+            out << "    mov [rel http_route_result_len], rax\n";
+            out << "    mov rcx, [rel http_client_socket]\n";
+            out << "    lea rdx, [rel " << route.response_label << "]\n";
+            out << "    mov r8, [rel http_route_result_len]\n";
+            out << "    call bada_sock_send\n";
+            out << "    jmp .http_server_close_client\n";
+        }
+        out << "    jmp .http_server_close_client\n";
         out << "    mov rcx, [rel http_client_socket]\n";
-        out << "    lea rdx, [rel http_body_ok]\n";
-        out << "    mov r8, rax\n";
+        out << "    lea rdx, [rel http_route_result_buf]\n";
+        out << "    mov r8, [rel http_route_result_len]\n";
         out << "    call bada_sock_send\n";
         out << "    jmp .http_server_close_client\n";
         out << "    cmp qword [rel http_route_kind], 2\n";

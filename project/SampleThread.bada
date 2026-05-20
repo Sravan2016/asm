@@ -1,0 +1,6 @@
+SampleThread ->
+    main{String[] s} -->
+    Thread t = Thread.of("Thread1"); // Thread1 is the name of the thread
+    t.run();
+    <--
+<-

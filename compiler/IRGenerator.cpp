@@ -2280,7 +2280,13 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
             if (target_class != analyser_->classes().end() &&
                 target_class->second.methods.find(member->member.lexeme) != target_class->second.methods.end()) {
                 const auto& method_symbol = target_class->second.methods.find(member->member.lexeme)->second;
+                const bool transfers_setter_argument =
+                    member->member.lexeme.size() > 3 &&
+                    member->member.lexeme.compare(0, 3, "set") == 0;
                 for (std::size_t i = 0; i < expr.arguments.size() && i < method_symbol.parameter_types.size(); ++i) {
+                    if (transfers_setter_argument) {
+                        continue;
+                    }
                     args[i + 1] = materialize_expected_string(
                         expr.arguments[i].get(), args[i + 1], method_symbol.parameter_types[i]);
                 }
@@ -2297,6 +2303,9 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                     call.operands.push_back(a);
                 }
                 emit(call);
+                if (transfers_setter_argument && args.size() > 1) {
+                    release_owned_value(strip_address_marker(args[1]));
+                }
                 OwnedValueInfo cleanup = cleanup_info_for_ir_type(ret_type, false);
                 if (!cleanup.runtime_func.empty()) {
                     register_owned_value(result_temp, cleanup.runtime_func, cleanup.operand_kind);
