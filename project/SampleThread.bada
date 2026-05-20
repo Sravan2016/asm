@@ -1,6 +1,11 @@
+from: com.base.Map;
+from: com.base.FileRead;
+
 SampleThread ->
     main{String[] s} -->
-    Thread t = Thread.of("Thread1"); // Thread1 is the name of the thread
-    t.run();
+      Thread t1 = Thread.of("Thread1"); // Thread1 is the name of the thread
+      t1.run(()=> Map.mapFunctions{} );
+      Thread t2 = Thread.of("Thread1"); // Thread1 is the name of the thread
+      t2.run(()=> FileRead.readFile{"./project/com/base/Map.bada"} );
     <--
 <-

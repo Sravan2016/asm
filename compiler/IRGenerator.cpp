@@ -72,6 +72,10 @@ bool is_builtin_file_type(const SemanticType& type) {
     return type.kind == SemanticTypeKind::Class && type.name == "File";
 }
 
+bool is_builtin_thread_type(const SemanticType& type) {
+    return type.kind == SemanticTypeKind::Class && type.name == "Thread";
+}
+
 bool is_builtin_http_client_type(const SemanticType& type) {
     return type.kind == SemanticTypeKind::Class && type.name == "HttpClient";
 }
@@ -2032,6 +2036,24 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                 }
             }
 
+            if (object_ident->name == "Thread") {
+                const std::string& method = member->member.lexeme;
+                if (method == "of") {
+                    if (!expr.arguments.empty()) {
+                        return args[1];
+                    }
+                    return emit_string_constant("Thread");
+                }
+                if (method == "run") {
+                    return object_value;
+                }
+                if (method == "join") {
+                    std::string result_temp = new_temporary();
+                    emit(IRInstruction::make_const_bool(result_temp, false));
+                    return result_temp;
+                }
+            }
+
             if (object_ident->name == "HttpServer") {
                 const std::string& method = member->member.lexeme;
                 if (method == "of") {
@@ -2173,6 +2195,45 @@ std::string IRGenerator::visitCall(const CallExpr& expr) {
                     http_client_body_values_[http_client_key] = args[1];
                 }
                 return object_value;
+            }
+        }
+
+        if (is_builtin_thread_type(object_sem_type)) {
+            const std::string& method = member->member.lexeme;
+            if (method == "run") {
+                std::string callback = "0";
+                if (args.size() > 1) {
+                    callback = args[1];
+                }
+
+                module_.add_external_symbol("thread_run");
+                std::string handle_temp = new_temporary();
+                IRInstruction run_call;
+                run_call.opcode = IROpcode::CallRuntime;
+                run_call.type = IRType::makePointer();
+                run_call.result = handle_temp;
+                run_call.operands = {"thread_run", object_value, callback, "0"};
+                emit(run_call);
+
+                module_.add_external_symbol("thread_join");
+                IRInstruction join_call;
+                join_call.opcode = IROpcode::CallRuntime;
+                join_call.type = IRType::makeBoolean();
+                join_call.operands = {"thread_join", handle_temp};
+                emit(join_call);
+
+                return object_value;
+            }
+            if (method == "join") {
+                module_.add_external_symbol("thread_join");
+                std::string result_temp = new_temporary();
+                IRInstruction join_call;
+                join_call.opcode = IROpcode::CallRuntime;
+                join_call.type = IRType::makeBoolean();
+                join_call.result = result_temp;
+                join_call.operands = {"thread_join", object_value};
+                emit(join_call);
+                return result_temp;
             }
         }
 
@@ -2515,6 +2576,16 @@ std::string IRGenerator::visitLambda(const LambdaExpr& expr) {
         if (stmt) visitStatement(*stmt);
     }
 
+    if (func->current_block() && !func->current_block()->is_terminated()) {
+        std::string false_value = new_temporary();
+        emit(IRInstruction::make_const_bool(false_value, false));
+        IRInstruction ret;
+        ret.opcode = IROpcode::Ret;
+        ret.type = IRType::makeBoolean();
+        ret.operands = {false_value};
+        emit(ret);
+    }
+
     // Restore symbol table
     symbol_table_ = saved_symbols;
     owned_values_ = saved_owned_values;
@@ -2737,6 +2808,14 @@ std::string IRGenerator::ensure_file_line_slot() {
     if (it != symbol_table_.end()) return it->second;
     std::string addr = new_temporary();
     emit(IRInstruction::make_alloca(addr, IRType::makeString()));
+    module_.add_external_symbol("string_from_cstr");
+    const std::string empty_cstr = emit_string_constant("", true);
+    IRInstruction init_call;
+    init_call.opcode = IROpcode::CallRuntime;
+    init_call.type = IRType::makeVoid();
+    init_call.operands = {"string_from_cstr", "&" + addr, empty_cstr};
+    emit(init_call);
+    register_owned_value(addr, "string_free", CleanupOperandKind::PassAddress);
     symbol_table_["__file_line_current"] = addr;
     return addr;
 }

@@ -854,7 +854,8 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
     if (match(TokenKind::Identifier)) {
         return std::make_unique<IdentifierExpr>(previous().lexeme, previous().start, previous().end);
     }
-    if (matchAny({TokenKind::KeywordPrint, TokenKind::KeywordPrintln})) {
+    if (matchAny({TokenKind::KeywordPrint, TokenKind::KeywordPrintln,
+                  TokenKind::KeywordMap, TokenKind::KeywordThread})) {
         return std::make_unique<IdentifierExpr>(previous().lexeme, previous().start, previous().end);
     }
     if (match(TokenKind::IntegerLiteral)) {

@@ -918,11 +918,14 @@ file_line_reader_next:
     mov byte ptr [r10 + rsi], 0
 
     # convert the temporary C string into a real String object
-    sub rsp, 32
+    # r10 is volatile across the call, so keep the temporary buffer on stack.
+    push r10
+    sub rsp, 40
     mov rcx, rbx
     mov rdx, r10
     call string_from_cstr
-    add rsp, 32
+    add rsp, 40
+    pop r10
 
     # free the temporary heap buffer
     mov rcx, r10

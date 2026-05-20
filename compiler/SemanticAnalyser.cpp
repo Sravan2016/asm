@@ -12,7 +12,8 @@ bool contains_key(const MapType& map, const std::string& key) {
 }
 
 bool is_builtin_class_name(const std::string& name) {
-    return name == "Map" || name == "File" || name == "HttpClient" || name == "HttpServer";
+    return name == "Map" || name == "File" || name == "Thread" ||
+           name == "HttpClient" || name == "HttpServer";
 }
 
 bool is_builtin_map_type(const SemanticType& type) {
@@ -21,6 +22,10 @@ bool is_builtin_map_type(const SemanticType& type) {
 
 bool is_builtin_file_type(const SemanticType& type) {
     return type.kind == SemanticTypeKind::Class && type.name == "File";
+}
+
+bool is_builtin_thread_type(const SemanticType& type) {
+    return type.kind == SemanticTypeKind::Class && type.name == "Thread";
 }
 
 bool is_builtin_http_client_type(const SemanticType& type) {
@@ -605,6 +610,21 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
                 rememberExprType(expr, result);
                 return result;
             }
+            if (!method_symbol && object_ident->name == "Thread") {
+                for (const auto& arg : expr.arguments) {
+                    if (arg) analyseExpr(*arg);
+                }
+                SemanticType result = SemanticType::makeUnknown();
+                if (member->member.lexeme == "of") {
+                    result = SemanticType::makeClass("Thread");
+                } else if (member->member.lexeme == "run") {
+                    result = SemanticType::makeClass("Thread");
+                } else if (member->member.lexeme == "join") {
+                    result = SemanticType::makeBoolean();
+                }
+                rememberExprType(expr, result);
+                return result;
+            }
             if (!method_symbol && object_ident->name == "HttpClient") {
                 for (const auto& arg : expr.arguments) {
                     if (arg) analyseExpr(*arg);
@@ -657,6 +677,17 @@ SemanticType SemanticAnalyser::analyseCallExpr(const CallExpr& expr) {
                     if (method == "nextLine") result_type = SemanticType::makeBoolean();
                     else if (method == "getLine") result_type = SemanticType::makeString();
                     else if (method == "close") result_type = SemanticType::makeVoid();
+                    rememberExprType(expr, result_type);
+                    return result_type;
+                }
+                if (!method_symbol && is_builtin_thread_type(object_type)) {
+                    for (const auto& arg : expr.arguments) {
+                        if (arg) analyseExpr(*arg);
+                    }
+                    const std::string& method = member->member.lexeme;
+                    SemanticType result_type = SemanticType::makeUnknown();
+                    if (method == "run") result_type = SemanticType::makeClass("Thread");
+                    else if (method == "join") result_type = SemanticType::makeBoolean();
                     rememberExprType(expr, result_type);
                     return result_type;
                 }

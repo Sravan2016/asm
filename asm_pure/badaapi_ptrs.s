@@ -675,45 +675,42 @@ my_DeleteFileA:
 my_CreateThread:
     # rcx=lpThreadAttributes, rdx=dwStackSize, r8=lpStartAddress, r9=lpParameter
     # [rsp+40]=dwCreationFlags, [rsp+48]=lpThreadId
-    sub rsp, 120
-    mov qword ptr [rsp + 96], r8
-    mov qword ptr [rsp + 104], r9
-    mov eax, dword ptr [rsp + 120 + 40]
+    sub rsp, 88
+    mov qword ptr [rsp + 72], r8
+    mov qword ptr [rsp + 80], r9
+    mov eax, dword ptr [rsp + 88 + 40]
     and eax, 4
     setnz al
     movzx r8d, al
 
-    mov qword ptr [rsp + 32], -1
-    mov qword ptr [rsp + 40], 0
-    mov byte ptr  [rsp + 48], r8b
-    mov qword ptr [rsp + 56], 0
-    mov qword ptr [rsp + 64], 0
-    mov qword ptr [rsp + 72], 0
-    mov rax, qword ptr [rsp + 96]
-    mov qword ptr [rsp + 80], rax
-    mov rax, qword ptr [rsp + 104]
-    mov qword ptr [rsp + 88], rax
-    lea rax, [rsp + 16]
-    mov qword ptr [rsp + 96], rax
+    mov rcx, -1                 # ProcessHandle = current process
+    xor edx, edx                # SecurityDescriptor
+    xor r9d, r9d                # StackZeroBits
+    mov qword ptr [rsp + 32], 0 # StackReserved
+    mov qword ptr [rsp + 40], 0 # StackCommit
+    mov rax, qword ptr [rsp + 72]
+    mov qword ptr [rsp + 48], rax # StartAddress
+    mov rax, qword ptr [rsp + 80]
+    mov qword ptr [rsp + 56], rax # StartParameter
     lea rax, [rsp + 0]
-    mov qword ptr [rsp + 104], rax
+    mov qword ptr [rsp + 64], rax # ThreadHandle
     lea rax, [rsp + 8]
-    mov qword ptr [rsp + 112], rax
+    mov qword ptr [rsp + 72], rax # ClientID
     call RtlCreateUserThread
     test eax, eax
     js .ct_fail
-    mov r10, qword ptr [rsp + 120 + 48]
+    mov r10, qword ptr [rsp + 88 + 48]
     test r10, r10
     jz .ct_ok
     mov rax, qword ptr [rsp + 8]
     mov dword ptr [r10], eax
 .ct_ok:
     mov rax, qword ptr [rsp + 0]
-    add rsp, 120
+    add rsp, 88
     ret
 .ct_fail:
     xor eax, eax
-    add rsp, 120
+    add rsp, 88
     ret
 
 my_WaitForSingleObject:
